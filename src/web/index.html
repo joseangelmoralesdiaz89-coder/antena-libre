@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Antena Libre</title>
+</head>
+<body>
+  <h1>Antena Libre</h1>
+  <p id="status">Listo para iniciar.</p>
+  <script>
+    fetch('../app/config.json')
+      .then(r => r.json())
+      .then(cfg => {
+        document.getElementById('status').textContent =
+          cfg.appName + ' (' + cfg.packageId + ') v' + cfg.version;
+      });
+  </script>
+</body>
+</html>
