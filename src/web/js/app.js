@@ -1,371 +1,546 @@
-(function () {
-'use strict';
+const LONG_PRESS_MS = 3000;
+const STORAGE_KEY = "antena_libre_history_v1";
 
-var A = window.Android || null;
-function $(s) { return document.querySelector(s); }
-function $$(s) { return Array.prototype.slice.call(document.querySelectorAll(s)); }
-
-// ---------- configuración ----------
-var CFG = {
-  version: '0.2.0', pollMs: 2000, pointEveryMs: 20000, minMoveM: 25, outageConfirm: 2,
-  maxPoints: 5000, maxOutages: 500,
-  thresholds: { rsrp: [-80, -90, -100, -110], sinr: [20, 13, 0, -5], dbm: [-70, -85, -100, -110] }
+const BAND_CATALOG = {
+  LTE: [
+    { code: "B28 (700 MHz)", mhz: 758, role: "Máximo alcance y penetración en interiores / zonas rurales" },
+    { code: "B20 (800 MHz)", mhz: 806, role: "Cobertura amplia y penetración en muros" },
+    { code: "B8 (900 MHz)", mhz: 942, role: "Buen alcance con capacidad moderada" },
+    { code: "B3 (1800 MHz)", mhz: 1842, role: "Equilibrio entre velocidad y cobertura urbana" },
+    { code: "B1 (2100 MHz)", mhz: 2140, role: "Buena capacidad de datos en zonas pobladas" },
+    { code: "B7 (2600 MHz)", mhz: 2655, role: "Alta velocidad a menor alcance y menor penetración" },
+    { code: "B41 (2500 MHz TDD)", mhz: 2595, role: "Alta capacidad TDD en áreas con línea de vista" }
+  ],
+  NR: [
+    { code: "n28 (700 MHz)", mhz: 773, role: "5G de largo alcance y cobertura profunda" },
+    { code: "n78 (3500 MHz C-Band)", mhz: 3500, role: "5G de muy alta velocidad, menor alcance y penetración" },
+    { code: "n41 (2500 MHz)", mhz: 2595, role: "5G de alta capacidad media" },
+    { code: "n258 (26 GHz mmWave)", mhz: 26500, role: "Velocidad extrema en línea de vista muy corta" }
+  ],
+  UMTS: [
+    { code: "B5 (850 MHz)", mhz: 880, role: "3G de alcance extendido" },
+    { code: "B8 (900 MHz)", mhz: 942, role: "3G de buena penetración" },
+    { code: "B1 (2100 MHz)", mhz: 2140, role: "3G estándar" }
+  ],
+  GSM: [
+    { code: "GSM 850", mhz: 881, role: "Voz y señal básica de gran alcance" },
+    { code: "GSM 900", mhz: 942, role: "Cobertura clásica de largo alcance" },
+    { code: "DCS 1800", mhz: 1842, role: "Capacidad urbana" },
+    { code: "PCS 1900", mhz: 1960, role: "Frecuencia regional de capacidad" }
+  ]
 };
-var Q = [
-  { n: 'Sin señal', c: '#6b7280' }, { n: 'Muy mala', c: '#dc2626' }, { n: 'Mala', c: '#f97316' },
-  { n: 'Regular', c: '#eab308' }, { n: 'Buena', c: '#84cc16' }, { n: 'Excelente', c: '#16a34a' }
-];
-function qi(q) { return Q[q + 1]; }
 
-var REG = {
-  IN_SERVICE: 'Registrado (en servicio)', OUT_OF_SERVICE: 'Sin servicio',
-  EMERGENCY_ONLY: 'Solo emergencias', POWER_OFF: 'Radio apagada', UNKNOWN: 'Desconocido (falta permiso)'
+const CABLE_LOSS_PER_100M_AT_1GHZ = {
+  RG58: 46.5,
+  RG6: 19.6,
+  LMR200: 34.4,
+  LMR400: 13.1
 };
 
-// ---------- almacenamiento ----------
-var LS = {
-  get: function (k, d) { try { var v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } },
-  set: function (k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
-  del: function (k) { try { localStorage.removeItem(k); } catch (e) {} }
-};
-var outages = LS.get('al_outages', []);
-var points = LS.get('al_points', []);
-var cur = null, bad = 0, good = 0, lastPt = null, lastLoc = null, last = { sig: null, loc: null };
-var activeTab = 'senal';
-
-// ---------- utilidades ----------
-function p2(n) { return (n < 10 ? '0' : '') + n; }
-function fmtDate(t) { var d = new Date(t); return p2(d.getDate()) + '/' + p2(d.getMonth() + 1) + ' ' + p2(d.getHours()) + ':' + p2(d.getMinutes()); }
-function stamp() { var d = new Date(); return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '-' + p2(d.getHours()) + p2(d.getMinutes()); }
-function fmtDur(ms) {
-  var s = Math.round(ms / 1000);
-  if (s < 60) return s + ' s';
-  var m = Math.floor(s / 60); s = s % 60;
-  if (m < 60) return m + ' min ' + s + ' s';
-  return Math.floor(m / 60) + ' h ' + (m % 60) + ' min';
-}
-function dist(a, b) {
-  var k = 111320, dx = (a.lon - b.lon) * Math.cos(a.lat * Math.PI / 180) * k, dy = (a.lat - b.lat) * k;
-  return Math.sqrt(dx * dx + dy * dy);
-}
-function hexA(h, a) {
-  var n = parseInt(h.slice(1), 16);
-  return 'rgba(' + (n >> 16) + ',' + ((n >> 8) & 255) + ',' + (n & 255) + ',' + a + ')';
-}
-function toast(msg) {
-  var t = $('#toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toast.t); toast.t = setTimeout(function () { t.classList.remove('show'); }, 3200);
-}
-function persist() { LS.set('al_outages', outages); LS.set('al_points', points); }
-function fmt(v, d) { return v == null ? '--' : (d ? v.toFixed(d) : String(v)); }
-
-// ---------- calidad ----------
-function rk(v, t) { return v >= t[0] ? 4 : v >= t[1] ? 3 : v >= t[2] ? 2 : v >= t[3] ? 1 : 0; }
-function quality(s, why) {
-  if (!s || why) return -1;
-  var r = [], T = CFG.thresholds;
-  if (s.rsrp != null) r.push(rk(s.rsrp, T.rsrp));
-  if (s.sinr != null) r.push(rk(s.sinr, T.sinr));
-  if (!r.length && s.dbm != null) r.push(rk(s.dbm, T.dbm));
-  if (!r.length && s.level >= 0) r.push(Math.min(4, s.level));
-  if (!r.length) return -1;
-  return Math.min.apply(null, r);
-}
-function outageReason(s) {
-  if (!s) return null;
-  if (s.airplane) return 'Modo avión';
-  if (s.state === 'OUT_OF_SERVICE') return 'Sin servicio (red no registrada)';
-  if (s.state === 'POWER_OFF') return 'Radio apagada';
-  if (s.state === 'EMERGENCY_ONLY') return 'Solo emergencias';
-  if (!s.wifi && !s.internet) return 'Sin conexión de datos';
-  return null;
-}
-
-// ---------- lectura nativa ----------
-function readSignal() { try { return JSON.parse(A.getSignal()); } catch (e) { return null; } }
-function readLoc() { try { var l = JSON.parse(A.getLocation()); return (l && l.lat != null) ? l : null; } catch (e) { return null; } }
-
-// ---------- caídas y puntos ----------
-function startOutage(why, s, t) {
-  var l = last.loc || lastLoc;
-  cur = { id: t, start: t, reason: why, lat: l ? l.lat : null, lon: l ? l.lon : null, net: s.net, op: s.operator };
-  LS.set('al_open', cur);
-}
-function endOutage() {
-  cur.end = Date.now(); cur.dur = cur.end - cur.start;
-  outages.unshift(cur);
-  if (outages.length > CFG.maxOutages) outages.length = CFG.maxOutages;
-  cur = null; LS.del('al_open'); persist();
-}
-function closeStale() {
-  var o = LS.get('al_open', null);
-  if (!o) return;
-  var hb = LS.get('al_hb', o.start);
-  o.end = Math.max(hb, o.start); o.dur = o.end - o.start; o.reason += ' (la app se cerró)';
-  outages.unshift(o); LS.del('al_open'); persist();
-}
-function maybeSavePoint(s, l, why) {
-  if (!l || l.age > 180) return;
-  var now = Date.now();
-  var moved = !lastPt || dist(lastPt, l) >= CFG.minMoveM;
-  var due = !lastPt || now - lastPt.t >= CFG.pointEveryMs;
-  if (!moved && !due) return;
-  var pt = { t: now, lat: l.lat, lon: l.lon, acc: l.acc, q: quality(s, why), rsrp: s.rsrp, sinr: s.sinr, dbm: s.dbm, net: s.net, op: s.operator, out: !!why };
-  points.push(pt);
-  if (points.length > CFG.maxPoints) points.splice(0, points.length - CFG.maxPoints);
-  lastPt = pt; persist();
-}
-
-// ---------- ciclo principal ----------
-function tick() {
-  if (!A) { render(null, null, null); return; }
-  var s = readSignal(), l = readLoc();
-  last.sig = s; last.loc = l;
-  if (l) lastLoc = l;
-  if (!s) { render(null, null, null); return; }
-  LS.set('al_hb', Date.now());
-  var why = outageReason(s);
-  if (why) {
-    bad++; good = 0;
-    if (!cur && bad >= CFG.outageConfirm) startOutage(why, s, Date.now() - (bad - 1) * CFG.pollMs);
-  } else {
-    good++; bad = 0;
-    if (cur && good >= CFG.outageConfirm) endOutage();
+const METRIC_GUIDES = {
+  rsrp: {
+    title: "Intensidad de Señal (dBm / RSRP / RSSI)",
+    what: "Mide la potencia real con la que llega la señal a tu dispositivo. Entre -65 y -80 dBm es excelente/buena; entre -81 y -95 dBm es regular; por debajo de -100 dBm se vuelve lenta o se desconecta.",
+    steps: [
+      "Sube el equipo o router 1.5 a 2 metros y acércalo a ventanas o zonas elevadas.",
+      "Aléjalo de muros gruesos, bloques de concreto, láminas de zinc/aluminio, microondas y motores.",
+      "Si usas antena exterior, acorta el cable coaxial y apunta hacia la dirección con mayor nivel de dBm."
+    ]
+  },
+  sinr: {
+    title: "Calidad de Enlace / SINR (dB)",
+    what: "Compara la señal útil frente al ruido y la interferencia de otras celdas o redes. Valores >= 10 dB suelen dar buen rendimiento; valores negativos indican mucha interferencia.",
+    steps: [
+      "Cambia a un canal o frecuencia menos saturada si estás en Wi-Fi.",
+      "Evita tener múltiples equipos transmitiendo pegados al receptor.",
+      "Busca una ubicación con menos rebotes o reflexión metálica directa."
+    ]
+  },
+  freq: {
+    title: "Frecuencia Actual (MHz / GHz)",
+    what: "Las frecuencias bajas (< 1000 MHz o 2.4 GHz) viajan más lejos y atraviesan mejor paredes; las frecuencias altas (>= 1800 MHz o 5 GHz) ofrecen mayor velocidad pero pierden fuerza más rápido con la distancia y los obstáculos.",
+    steps: [
+      "Revisa la tarjeta 'Frecuencia Conectada vs. Recomendada' para ver si te conviene cambiar de banda.",
+      "En interiores lejanos a la torre/router, prioriza frecuencia baja/penetrante.",
+      "Cerca de la fuente y sin muros, aprovecha frecuencia alta para mayor velocidad."
+    ]
+  },
+  dist: {
+    title: "Antena y Distancia Estimada",
+    what: "Calcula una distancia aproximada hacia la antena/sector usando la potencia recibida, la frecuencia y la pérdida de trayectoria. Edificios, árboles y colinas hacen que la distancia real pueda variar.",
+    steps: [
+      "Mira el mapa para identificar la dirección aproximada del marcador de antena.",
+      "Verifica si hay obstáculos físicos en esa dirección y eleva el punto de recepción.",
+      "Si el enlace es largo o inestable, revisa el módulo 'Planos y Cables' para construir una antena direccional."
+    ]
+  },
+  advisor: {
+    title: "Asesor de Frecuencia Conectada vs. Recomendada",
+    what: "Compara la banda/frecuencia activa con la más adecuada según tu nivel de señal y tipo de red para darte pasos concretos de cambio.",
+    steps: [
+      "Toca 'Ajustes de Red / Banda' para ir a la configuración de red del sistema.",
+      "En Wi-Fi, alterna entre 2.4 GHz (alcance/paredes) y 5 GHz (velocidad cerca).",
+      "En red móvil, comprueba el modo de red preferido o desplázate unos metros para captar un mejor sector."
+    ]
+  },
+  map: {
+    title: "Mapa Local · Ubicación y Distancia de Antena",
+    what: "Muestra tu ubicación (vía GPS o coordenada de respaldo), un marcador estimado de la antena y la distancia en línea recta. Si no hay conexión para cargar tiles externos, activa automáticamente el mapa offline.",
+    steps: [
+      "Activa el GPS / Ubicación del teléfono y concede el permiso de ubicación a la app.",
+      "Camina o gira el receptor observando si la distancia estimada y los dBm mejoran.",
+      "Usa la orientación del mapa como referencia inicial para apuntar antenas direccionales."
+    ]
   }
-  maybeSavePoint(s, l, why);
-  render(s, l, why);
+};
+
+const ANTENNA_PLANS = [
+  {
+    name: "Dipolo de Media Onda (λ/2)",
+    signal: "Señal omnidireccional de base para bandas bajas/medias (ej. 700–900 MHz o 1800 MHz).",
+    reach: "Alcance amplio en terreno abierto o semiabierto; ideal como punto de partida confiable.",
+    materials: "2 varillas o tubos de cobre/aluminio (3–6 mm), soporte aislante (PVC/teflón), conector hembra N o SO-239, caja estanca.",
+    cable: "Coaxial LMR-200 / LMR-400 (50 Ω) o RG-6 (75 Ω). Longitud recomendada: lo más corta posible (ideal < 3–5 m).",
+    whyCableShort: "Cada metro de cable pierde dB por resistencia y dieléctrico. Un cable largo o delgado disipa la señal y reduce el alcance útil."
+  },
+  {
+    name: "Antena Yagi Direccional (3 o 5 Elementos)",
+    signal: "Enlace direccional de alta ganancia para apuntar hacia una torre o punto lejano.",
+    reach: "Mayor alcance en el eje frontal y menor interferencia lateral/trasera.",
+    materials: "Boom soporte, 1 reflector trasero, 1 dipolo activo, 2 a 4 directores de varilla de cobre/aluminio y conector N/SMA.",
+    cable: "LMR-240 / LMR-400 lo más corto posible (1.5 a 4 m), con conectores sellados contra humedad.",
+    whyCableShort: "A mayor frecuencia, mayor pérdida por metro; si el cable es demasiado largo, pierde más dB de los que aporta la Yagi."
+  },
+  {
+    name: "Antena Ground-Plane (GP) con Radiales",
+    signal: "Recepción/transmisión de horizonte bajo con plano de tierra radial.",
+    reach: "Buen desempeño costero/abierto y recepción estable a baja elevación.",
+    materials: "1 elemento vertical radiante + 3 o 4 radiales inclinados (~30°–45°), base metálica/conector chasis.",
+    cable: "Cable coaxial de baja pérdida corto (< 4 m), evitando bucles apretados o aplastamientos.",
+    whyCableShort: "Mantener el tramo corto minimiza atenuación y evita desadaptaciones por cables largos de mala calidad."
+  },
+  {
+    name: "Antena Cantena / Guía de Onda Cilíndrica",
+    signal: "Enlace direccional de corto/medio alcance en frecuencias altas (ej. 2.4 GHz).",
+    reach: "Cientos de metros a ~1–2 km en línea de vista despejada con equipo compatible.",
+    materials: "Lata metálica limpia de diámetro adecuado, sonda de cobre soldada al conector N/SMA, soporte.",
+    cable: "Pigtail / coaxial corto de baja pérdida (ideal <= 1.5–2 m).",
+    whyCableShort: "En 2.4 GHz un cable largo o RG-58 extenso pierde gran parte de la señal antes de llegar al equipo."
+  },
+  {
+    name: "Reflector Parabólico / Corner Reflector",
+    signal: "Alta direccionalidad para enfocar señal débil en enlaces puntuales.",
+    reach: "Alcance superior en dirección focal con buena línea de vista.",
+    materials: "Superficie reflectora (malla o lámina metálica curvada o en ángulo de 90°), alimentador (dipolo/biquad) en el punto focal.",
+    cable: "Tramo mínimo de cable de baja pérdida entre alimentador y equipo.",
+    whyCableShort: "La ganancia del reflector se desperdicia si el cable de bajada es largo o de alta atenuación."
+  }
+];
+
+let leafletMap = null;
+let userLayer = null;
+let antLayer = null;
+let lineLayer = null;
+let currentLang = "es";
+
+function wavelengthMeters(freqMhz) {
+  return 300 / Math.max(1, freqMhz);
 }
 
-// ---------- pestaña Señal ----------
-function render(s, l, why) {
-  var chip = $('#chip');
-  if (!s) {
-    chip.textContent = A ? 'Sin datos' : 'Abre la app instalada'; chip.style.background = '#374151';
-    $('#qname').textContent = '--';
-    $('#qsub').textContent = A ? 'Leyendo señal…' : 'Esta vista necesita la app Android.';
+function cableAttenuationDb(cableType, freqMhz, lengthMeters) {
+  const base1G = CABLE_LOSS_PER_100M_AT_1GHZ[cableType] || 25;
+  const freqFactor = Math.sqrt(Math.max(1, freqMhz) / 1000);
+  return (base1G / 100) * freqFactor * lengthMeters;
+}
+
+function estimateDistanceMeters(dbm, freqMhz) {
+  const clamped = Math.max(-125, Math.min(-45, dbm));
+  const freqCorr = Math.max(1, freqMhz) / 1800;
+  return Math.max(25, Math.round((60 * Math.pow(10, (-68 - clamped) / 34)) / Math.sqrt(freqCorr)));
+}
+
+function initTabs() {
+  document.querySelectorAll(".tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+      document.querySelectorAll(".tab-content").forEach((s) => s.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+      if (btn.dataset.tab === "panel" && leafletMap) {
+        setTimeout(() => leafletMap.invalidateSize(), 160);
+      }
+      if (btn.dataset.tab === "diag") {
+        renderHistory();
+      }
+    });
+  });
+}
+
+function initLongPress() {
+  document.querySelectorAll(".lp-card").forEach((card) => {
+    const bar = card.querySelector(".lp-progress");
+    let timer = null;
+    let raf = null;
+    let t0 = 0;
+
+    const start = () => {
+      t0 = performance.now();
+      const step = (now) => {
+        const pct = Math.min(100, ((now - t0) / LONG_PRESS_MS) * 100);
+        if (bar) bar.style.width = pct + "%";
+        if (pct < 100) raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+
+      timer = setTimeout(() => {
+        cancel();
+        if (window.AntenaBridge && typeof window.AntenaBridge.vibrateMs === "function") {
+          try { window.AntenaBridge.vibrateMs(60); } catch (_) {}
+        }
+        openGuideModal(card.dataset.metric);
+      }, LONG_PRESS_MS);
+    };
+
+    const cancel = () => {
+      clearTimeout(timer);
+      cancelAnimationFrame(raf);
+      if (bar) bar.style.width = "0%";
+    };
+
+    card.addEventListener("pointerdown", start);
+    card.addEventListener("pointerup", cancel);
+    card.addEventListener("pointerleave", cancel);
+    card.addEventListener("pointercancel", cancel);
+  });
+}
+
+function openGuideModal(key) {
+  const item = METRIC_GUIDES[key] || METRIC_GUIDES.rsrp;
+  document.getElementById("modalTitle").textContent = item.title;
+  document.getElementById("modalWhat").textContent = item.what;
+  const ul = document.getElementById("modalSteps");
+  ul.innerHTML = "";
+  item.steps.forEach((s) => {
+    const li = document.createElement("li");
+    li.textContent = s;
+    ul.appendChild(li);
+  });
+  document.getElementById("guideModal").classList.remove("hidden");
+}
+
+function initBandsTab() {
+  const techSel = document.getElementById("bandTechSelect");
+  const itemSel = document.getElementById("bandItemSelect");
+  const box = document.getElementById("bandDetailsBox");
+
+  const populateItems = () => {
+    const list = BAND_CATALOG[techSel.value] || BAND_CATALOG.LTE;
+    itemSel.innerHTML = "";
+    list.forEach((b, idx) => {
+      const opt = document.createElement("option");
+      opt.value = idx;
+      opt.textContent = b.code;
+      itemSel.appendChild(opt);
+    });
+    updateBandBox();
+  };
+
+  const updateBandBox = () => {
+    const list = BAND_CATALOG[techSel.value] || BAND_CATALOG.LTE;
+    const b = list[Number(itemSel.value) || 0] || list[0];
+    const lam = wavelengthMeters(b.mhz);
+    const dipoleHalf = (lam * 0.475).toFixed(3);
+    box.innerHTML = `
+      <strong>${b.code}</strong> · Frecuencia central: <strong>${b.mhz} MHz</strong><br/>
+      <span>Uso típico: ${b.role}</span><br/>
+      <span>Longitud de onda (λ): <strong>${lam.toFixed(3)} m</strong> · Dipolo λ/2 aprox.: <strong>${dipoleHalf} m</strong></span>
+    `;
+  };
+
+  techSel.addEventListener("change", populateItems);
+  itemSel.addEventListener("change", updateBandBox);
+  populateItems();
+}
+
+function initAntennaCalculatorAndPlans() {
+  const freqInput = document.getElementById("calcFreq");
+  const lenInput = document.getElementById("calcCableLen");
+  const cableSel = document.getElementById("calcCableType");
+  const distInput = document.getElementById("calcDist");
+  const physBox = document.getElementById("cablePhysicsBox");
+
+  const recalc = () => {
+    const freq = Math.max(50, Number(freqInput.value) || 1800);
+    const len = Math.max(0.2, Number(lenInput.value) || 5);
+    const cable = cableSel.value;
+    const dist = Math.max(10, Number(distInput.value) || 1000);
+
+    const lam = wavelengthMeters(freq);
+    const dipoleTotal = (lam * 0.475).toFixed(3);
+    const dipoleArm = (lam * 0.2375).toFixed(3);
+    const yagiReflector = (lam * 0.50).toFixed(3);
+    const yagiDriven = (lam * 0.47).toFixed(3);
+    const yagiDirector = (lam * 0.44).toFixed(3);
+
+    const lossDb = cableAttenuationDb(cable, freq, len);
+    const fsplDb = 20 * Math.log10(dist / 1000) + 20 * Math.log10(freq) + 32.44;
+
+    physBox.innerHTML = `
+      <div><strong>Medidas calculadas a ${freq} MHz (λ = ${lam.toFixed(3)} m):</strong></div>
+      <div>• Dipolo λ/2: total <strong>${dipoleTotal} m</strong> (cada brazo <strong>${dipoleArm} m</strong>)</div>
+      <div>• Yagi base: reflector <strong>${yagiReflector} m</strong> · dipolo <strong>${yagiDriven} m</strong> · director <strong>${yagiDirector} m</strong></div>
+      <div>• Pérdida estimada en <strong>${len} m</strong> de <strong>${cable}</strong>: <strong style="color:var(--warn)">-${lossDb.toFixed(2)} dB</strong> (Pérdida de trayectoria libre a ${dist} m: ~${fsplDb.toFixed(1)} dB)</div>
+      <div style="margin-top:4px;color:var(--muted)">Si alargas el cable sin cambiar a uno de menor pérdida, pierdes más potencia en el tramo y reduces el alcance efectivo.</div>
+    `;
+  };
+
+  [freqInput, lenInput, cableSel, distInput].forEach((el) => el.addEventListener("input", recalc));
+  recalc();
+
+  const plansContainer = document.getElementById("antennaPlansContainer");
+  plansContainer.innerHTML = "";
+  ANTENNA_PLANS.forEach((p) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <h3>${p.name}</h3>
+      <ul class="spec-list">
+        <li><strong>Señal que capta:</strong> ${p.signal}</li>
+        <li><strong>Distancia / Alcance:</strong> ${p.reach}</li>
+        <li><strong>Materiales:</strong> ${p.materials}</li>
+        <li><strong>Cable recomendado:</strong> ${p.cable}</li>
+        <li><strong>Por qué no alargar el cable:</strong> ${p.whyCableShort}</li>
+      </ul>
+    `;
+    plansContainer.appendChild(card);
+  });
+}
+
+function renderOfflineMap(distM) {
+  document.getElementById("leafletMap").classList.add("hidden");
+  const c = document.getElementById("fallbackMapCanvas");
+  c.classList.remove("hidden");
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+
+  ctx.strokeStyle = "#1c2a3d";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= c.width; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, c.height); ctx.stroke();
+  }
+  for (let y = 0; y <= c.height; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(c.width, y); ctx.stroke();
+  }
+
+  const ux = 140, uy = 230;
+  const ax = 480, ay = 95;
+
+  ctx.setLineDash([8, 6]);
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(ux, uy); ctx.lineTo(ax, ay); ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = "#10b981";
+  ctx.beginPath(); ctx.arc(ux, uy, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#eef4fb";
+  ctx.font = "bold 13px sans-serif";
+  ctx.fillText("Tú", ux - 10, uy + 26);
+
+  ctx.fillStyle = "#f59e0b";
+  ctx.beginPath(); ctx.arc(ax, ay, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#eef4fb";
+  ctx.fillText(`Antena (~${distM} m)`, ax - 55, ay - 16);
+}
+
+function updateMap(lat, lon, distM) {
+  document.getElementById("mapCoords").textContent = `Coord.: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+  document.getElementById("mapDistanceBadge").textContent = `~${distM} m`;
+
+  const dLat = (distM / 111320) * 0.72;
+  const dLon = (distM / (111320 * Math.max(0.2, Math.cos((lat * Math.PI) / 180)))) * 0.68;
+  const antLat = lat + dLat;
+  const antLon = lon + dLon;
+
+  if (typeof L !== "undefined" && navigator.onLine) {
+    document.getElementById("leafletMap").classList.remove("hidden");
+    document.getElementById("fallbackMapCanvas").classList.add("hidden");
+
+    if (!leafletMap) {
+      leafletMap = L.map("leafletMap").setView([lat, lon], 15);
+      const tiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "© OpenStreetMap"
+      });
+      tiles.on("tileerror", () => renderOfflineMap(distM));
+      tiles.addTo(leafletMap);
+    } else {
+      leafletMap.setView([lat, lon], 15);
+    }
+
+    if (userLayer) leafletMap.removeLayer(userLayer);
+    if (antLayer) leafletMap.removeLayer(antLayer);
+    if (lineLayer) leafletMap.removeLayer(lineLayer);
+
+    userLayer = L.circleMarker([lat, lon], { radius: 8, color: "#10b981", fillOpacity: 0.9 }).addTo(leafletMap).bindPopup("Tu ubicación");
+    antLayer = L.circleMarker([antLat, antLon], { radius: 8, color: "#f59e0b", fillOpacity: 0.9 }).addTo(leafletMap).bindPopup(`Antena estimada (~${distM} m)`);
+    lineLayer = L.polyline([[lat, lon], [antLat, antLon]], { color: "#38bdf8", weight: 2.5, dashArray: "6,6" }).addTo(leafletMap);
+  } else {
+    renderOfflineMap(distM);
+  }
+}
+
+function saveHistorySample(dbm, sinr, freqMhz, distM) {
+  const arr = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  arr.unshift({
+    ts: new Date().toLocaleTimeString(),
+    dbm,
+    sinr,
+    freqMhz,
+    distM
+  });
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, 30)));
+}
+
+function renderHistory() {
+  const arr = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+  const list = document.getElementById("historyList");
+  list.innerHTML = arr.length
+    ? arr.map((r) => `<div class="history-item"><span>${r.ts} · ${r.freqMhz} MHz</span><span>${r.dbm} dBm · ~${r.distM} m</span></div>`).join("")
+    : `<div class="history-item"><span>Sin muestras todavía</span><span>Toca Escanear</span></div>`;
+
+  const canvas = document.getElementById("historyCanvas");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (arr.length < 2) return;
+
+  const samples = [...arr].reverse();
+  ctx.strokeStyle = "#10b981";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  samples.forEach((s, idx) => {
+    const x = (idx / (samples.length - 1)) * (canvas.width - 24) + 12;
+    const norm = Math.max(0, Math.min(1, (s.dbm + 120) / 70));
+    const y = canvas.height - 16 - norm * (canvas.height - 32);
+    if (idx === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function renderScans(data) {
+  const wrap = document.getElementById("scanResultsList");
+  const wifiList = (data && Array.isArray(data.wifiList)) ? data.wifiList : [];
+  if (!wifiList.length) {
+    wrap.innerHTML = `<div class="info-box">Estado actual: <strong>${data && data.band ? data.band : "Red Activa"}</strong> · ${data && data.dbm ? data.dbm : -86} dBm. Pulsa <em>Escanear Wi-Fi</em> o concede permisos de ubicación/Wi-Fi para listar redes cercanas.</div>`;
     return;
   }
-  var q = quality(s, why), c = qi(q);
-  chip.textContent = cur ? 'CAÍDA' : c.n; chip.style.background = cur ? '#dc2626' : c.c;
-  $('#qdot').style.background = c.c; $('#qdot').style.boxShadow = '0 0 18px 2px ' + hexA(c.c, .55);
-  $('#qname').textContent = c.n;
-  var lim = [];
-  if (s.rsrp != null) lim.push('RSRP ' + qi(rk(s.rsrp, CFG.thresholds.rsrp)).n);
-  if (s.sinr != null) lim.push('SINR ' + qi(rk(s.sinr, CFG.thresholds.sinr)).n);
-  $('#qsub').textContent = why ? why : (lim.join(' · ') || (s.dbm != null ? s.dbm + ' dBm' : 'Nivel Android ' + s.level + '/4'));
-
-  var rs = s.rsrp != null ? s.rsrp : s.dbm;
-  $('#rsrp').textContent = fmt(rs);
-  var pct = rs == null ? 0 : Math.max(0, Math.min(100, (rs + 140) / 96 * 100));
-  var bf = $('#barfill'); bf.style.width = pct + '%'; bf.style.background = c.c;
-  $('#sinr').textContent = fmt(s.sinr); $('#rsrq').textContent = fmt(s.rsrq);
-  $('#net').textContent = s.net + (s.tech && s.tech !== '4G' && s.tech !== '5G' ? '' : '');
-  $('#op').textContent = s.operator || '--';
-  $('#reg').textContent = REG[s.state] || s.state;
-  $('#inet').textContent = s.wifi ? 'Wi‑Fi' : (s.internet ? (s.validated ? 'Datos móviles' : 'Datos (sin validar)') : 'Sin conexión');
-  $('#gps').textContent = l ? ('±' + l.acc + ' m' + (l.age > 180 ? ' (antigua)' : '')) : (s.locPerm ? 'Sin fix GPS' : 'Sin permiso');
-  var since = Date.now() - 86400000;
-  $('#n24').textContent = outages.filter(function (o) { return o.start >= since; }).length + (cur ? 1 : 0);
-  $('#npts').textContent = points.length;
-  $('#permbox').classList.toggle('hidden', !!(s.locPerm && s.phonePerm));
-
-  var b = $('#banner');
-  if (cur) {
-    b.classList.remove('hidden');
-    b.textContent = 'Caída activa desde ' + fmtDate(cur.start) + ' (' + fmtDur(Date.now() - cur.start) + ') — ' + cur.reason;
-  } else b.classList.add('hidden');
-
-  if (activeTab === 'brujula') $('#cRsrp').textContent = rs == null ? '--' : rs + ' dBm';
+  wrap.innerHTML = wifiList.map((w) => `
+    <div class="info-box">
+      <strong>${w.ssid || "Red sin nombre"}</strong> · <span>${w.freqMhz || 2412} MHz</span> · <strong>${w.rssi || -75} dBm</strong>
+    </div>
+  `).join("");
 }
 
-// ---------- pestaña Mapa ----------
-var hits = [];
-function drawMap() {
-  var cv = $('#map'), dpr = window.devicePixelRatio || 1, w = cv.clientWidth, h = cv.clientHeight;
-  cv.width = w * dpr; cv.height = h * dpr;
-  var g = cv.getContext('2d'); g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, w, h);
-  var f = $('#filter').value;
-  var pts = points.filter(function (p) { return f === 'all' || (f === 'out' && p.out) || (f === 'bad' && p.q <= 1); });
-  var evs = outages.filter(function (o) { return o.lat != null; });
-  hits = [];
-  var all = pts.map(function (p) { return [p.lat, p.lon]; }).concat(evs.map(function (o) { return [o.lat, o.lon]; }));
-  if (lastLoc) all.push([lastLoc.lat, lastLoc.lon]);
-  $('#mapinfo').textContent = pts.length + ' puntos · ' + outages.length + ' caídas';
-  if (!all.length) {
-    g.fillStyle = '#64748b'; g.font = '14px sans-serif'; g.textAlign = 'center';
-    g.fillText('Sin puntos todavía. Camina con la app abierta.', w / 2, h / 2); return;
+function refreshTelemetry() {
+  let nativeData = null;
+  if (window.AntenaBridge && typeof window.AntenaBridge.getTelemetryJson === "function") {
+    try { nativeData = JSON.parse(window.AntenaBridge.getTelemetryJson()); } catch (_) {}
   }
-  var minLat = 90, maxLat = -90, minLon = 180, maxLon = -180;
-  all.forEach(function (a) { minLat = Math.min(minLat, a[0]); maxLat = Math.max(maxLat, a[0]); minLon = Math.min(minLon, a[1]); maxLon = Math.max(maxLon, a[1]); });
-  var cy = (minLat + maxLat) / 2, cx = (minLon + maxLon) / 2, kx = Math.cos(cy * Math.PI / 180), pad = 28;
-  var spanX = Math.max((maxLon - minLon) * kx, 0.0006), spanY = Math.max(maxLat - minLat, 0.0006);
-  var sc = Math.min((w - 2 * pad) / spanX, (h - 2 * pad) / spanY);
-  function pr(lat, lon) { return [w / 2 + (lon - cx) * kx * sc, h / 2 - (lat - cy) * sc]; }
 
-  g.strokeStyle = '#14203a'; g.lineWidth = 1;
-  for (var i = 1; i < 6; i++) { g.beginPath(); g.moveTo(w * i / 6, 0); g.lineTo(w * i / 6, h); g.moveTo(0, h * i / 6); g.lineTo(w, h * i / 6); g.stroke(); }
+  const dbm = nativeData && typeof nativeData.dbm === "number" ? nativeData.dbm : -87;
+  const sinr = nativeData && typeof nativeData.sinr === "number" ? nativeData.sinr : 8;
+  const freqMhz = nativeData && typeof nativeData.freqMhz === "number" ? nativeData.freqMhz : 1800;
+  const bandLabel = nativeData && nativeData.band ? nativeData.band : "Banda Auto";
+  const isWifi = nativeData && nativeData.mode === "WIFI";
+  const distM = estimateDistanceMeters(dbm, freqMhz);
 
-  pts.forEach(function (p) {
-    var xy = pr(p.lat, p.lon), col = qi(p.q).c, rg = g.createRadialGradient(xy[0], xy[1], 0, xy[0], xy[1], 20);
-    rg.addColorStop(0, hexA(col, .5)); rg.addColorStop(1, hexA(col, 0));
-    g.fillStyle = rg; g.beginPath(); g.arc(xy[0], xy[1], 20, 0, 6.2832); g.fill();
-  });
-  pts.forEach(function (p) {
-    var xy = pr(p.lat, p.lon);
-    g.fillStyle = qi(p.q).c; g.beginPath(); g.arc(xy[0], xy[1], 3.2, 0, 6.2832); g.fill();
-    hits.push({ x: xy[0], y: xy[1], txt: fmtDate(p.t) + ' · ' + qi(p.q).n + (p.rsrp != null ? ' · RSRP ' + p.rsrp : '') + (p.sinr != null ? ' · SINR ' + p.sinr : '') + ' · ' + p.net + (p.out ? ' · CAÍDA' : '') });
-  });
-  evs.forEach(function (o) {
-    var xy = pr(o.lat, o.lon);
-    g.strokeStyle = '#ef4444'; g.lineWidth = 2.5; g.beginPath();
-    g.moveTo(xy[0] - 6, xy[1] - 6); g.lineTo(xy[0] + 6, xy[1] + 6); g.moveTo(xy[0] + 6, xy[1] - 6); g.lineTo(xy[0] - 6, xy[1] + 6); g.stroke();
-    hits.push({ x: xy[0], y: xy[1], txt: 'CAÍDA ' + fmtDate(o.start) + ' · ' + fmtDur(o.dur || 0) + ' · ' + o.reason });
-  });
-  if (lastLoc) {
-    var m = pr(lastLoc.lat, lastLoc.lon);
-    g.strokeStyle = '#60a5fa'; g.lineWidth = 2; g.beginPath(); g.arc(m[0], m[1], 8, 0, 6.2832); g.stroke();
-    g.fillStyle = '#60a5fa'; g.beginPath(); g.arc(m[0], m[1], 3, 0, 6.2832); g.fill();
-  }
-  var meters = Math.round((w / sc) * 111320 / 10) * 10;
-  g.fillStyle = '#94a3b8'; g.font = '11px sans-serif'; g.textAlign = 'left';
-  g.fillText('Ancho ≈ ' + (meters >= 1000 ? (meters / 1000).toFixed(1) + ' km' : meters + ' m'), 8, h - 8);
-}
-function drawList() {
-  var box = $('#outlist'), html = '';
-  var list = (cur ? [Object.assign({}, cur, { end: null })] : []).concat(outages.slice(0, 25));
-  if (!list.length) html = '<p class="muted small">Sin caídas registradas.</p>';
-  list.forEach(function (o) {
-    html += '<div class="ol"><b>' + fmtDate(o.start) + '</b> · ' + (o.end ? fmtDur(o.dur) : 'en curso') + '<br><span class="muted">' + o.reason + (o.net ? ' · ' + o.net : '') + (o.lat != null ? ' · con ubicación' : '') + '</span></div>';
-  });
-  box.innerHTML = html;
-}
-function legend(el) {
-  el.innerHTML = Q.slice().reverse().map(function (x) { return '<span><i style="background:' + x.c + '"></i>' + x.n + '</span>'; }).join('');
+  const recFreq = dbm < -90
+    ? (isWifi ? "Wi-Fi 2.4 GHz (mayor alcance y muros)" : "Banda baja 700–900 MHz (mayor alcance)")
+    : (isWifi ? "Wi-Fi 5 GHz (mayor velocidad cerca)" : "Banda media/alta 1800–2600+ MHz (más velocidad)");
+
+  document.getElementById("mSignal").textContent = `${dbm} dBm`;
+  document.getElementById("mSignalSub").textContent = dbm >= -80 ? "Señal fuerte" : dbm >= -95 ? "Señal media — mejorable" : "Señal débil — reubica/antena";
+
+  document.getElementById("mSinr").textContent = `${sinr} dB`;
+  document.getElementById("mSinrSub").textContent = sinr >= 10 ? "Calidad limpia" : "Interferencia o margen bajo";
+
+  document.getElementById("mFreq").textContent = `${freqMhz} MHz`;
+  document.getElementById("mFreqSub").textContent = bandLabel;
+
+  document.getElementById("mDist").textContent = `~${distM} m`;
+  document.getElementById("mDistSub").textContent = "Distancia estimada a antena";
+
+  document.getElementById("linkModePill").textContent = isWifi ? "WI-FI" : "CELULAR";
+  document.getElementById("freqNow").textContent = `${freqMhz} MHz (${bandLabel})`;
+  document.getElementById("freqBest").textContent = recFreq;
+  document.getElementById("freqGuideText").textContent = isWifi
+    ? "Cómo conectarte: abre Ajustes > Wi-Fi, toca la red de 2.4 GHz si buscas alcance a través de paredes o la de 5 GHz si estás cerca y buscas máxima velocidad."
+    : "Cómo conectarte: entra a Ajustes > Red móvil > Tipo de red preferido / Selección de red, o desplázate a un punto con línea de vista más despejada para enganchar la mejor banda.";
+
+  document.getElementById("coachAdvice").textContent = dbm < -88
+    ? "Acción recomendada: eleva el equipo 1.5–2 m, aléjalo de paredes gruesas o metal y, si el problema persiste, revisa en 'Planos y Cables' el diseño ideal con cable corto."
+    : "Buen nivel de partida: mantén el receptor despejado y evita cables coaxiales largos o con dobleces pronunciados.";
+
+  const lat = nativeData && typeof nativeData.lat === "number" ? nativeData.lat : 23.1136;
+  const lon = nativeData && typeof nativeData.lon === "number" ? nativeData.lon : -82.3666;
+  updateMap(lat, lon, distM);
+  saveHistorySample(dbm, sinr, freqMhz, distM);
+  renderScans(nativeData);
 }
 
-// ---------- exportación ----------
-function csvEsc(v) { v = v == null ? '' : String(v); return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
-function toCsv(head, rows) { return head.join(',') + '\n' + rows.map(function (r) { return r.map(csvEsc).join(','); }).join('\n') + '\n'; }
-function save(name, mime, text) {
-  if (!A) { toast('Solo disponible en la app'); return; }
-  var r = A.saveFile(name, mime, text);
-  toast(r.indexOf('ERR') === 0 ? 'Error: ' + r : 'Guardado en ' + r);
-}
-function jsonAll() {
-  return JSON.stringify({ app: 'Antena Libre', version: CFG.version, exportado: new Date().toISOString(), caidas: outages, puntos: points }, null, 1);
-}
-function exportPts() {
-  save('antena-libre-puntos-' + stamp() + '.csv', 'text/csv', toCsv(
-    ['fecha', 'timestamp', 'lat', 'lon', 'precision_m', 'calidad', 'rsrp_dbm', 'sinr_db', 'dbm', 'red', 'operador', 'caida'],
-    points.map(function (p) { return [new Date(p.t).toISOString(), p.t, p.lat, p.lon, p.acc, qi(p.q).n, p.rsrp, p.sinr, p.dbm, p.net, p.op, p.out ? 1 : 0]; })));
-}
-function exportOut() {
-  save('antena-libre-caidas-' + stamp() + '.csv', 'text/csv', toCsv(
-    ['inicio', 'fin', 'duracion_s', 'motivo', 'lat', 'lon', 'red', 'operador'],
-    outages.map(function (o) { return [new Date(o.start).toISOString(), o.end ? new Date(o.end).toISOString() : '', Math.round((o.dur || 0) / 1000), o.reason, o.lat, o.lon, o.net, o.op]; })));
-}
+async function runSpeedAndPingTest() {
+  const pingEl = document.getElementById("statPing");
+  const downEl = document.getElementById("statDown");
+  pingEl.textContent = "Midiendo...";
+  downEl.textContent = "Midiendo...";
 
-// ---------- brújula ----------
-var target = null, bins = [], useTrue = false;
-for (var bi = 0; bi < 36; bi++) bins.push(null);
-var CARD = ['N', 'NE', 'E', 'SE', 'S', 'SO', 'O', 'NO'];
-function buildDial() {
-  var s = '', a;
-  for (a = 0; a < 360; a += 10) {
-    var major = a % 30 === 0;
-    s += '<line x1="150" y1="10" x2="150" y2="' + (major ? 32 : 22) + '" transform="rotate(' + a + ' 150 150)" stroke="#64748b" stroke-width="' + (major ? 2 : 1) + '"/>';
-  }
-  var L = { 0: 'N', 90: 'E', 180: 'S', 270: 'O' };
-  for (a = 0; a < 360; a += 30) {
-    if (L[a]) s += '<text x="150" y="62" text-anchor="middle" font-size="26" font-weight="800" fill="' + (a === 0 ? '#ef4444' : '#e5e7eb') + '" transform="rotate(' + a + ' 150 150)">' + L[a] + '</text>';
-    else s += '<text x="150" y="54" text-anchor="middle" font-size="11" fill="#94a3b8" transform="rotate(' + a + ' 150 150)">' + a + '</text>';
-  }
-  $('#ticks').innerHTML = s;
-}
-function compassTick() {
-  if (!A || activeTab !== 'brujula') return;
-  var o; try { o = JSON.parse(A.getHeading()); } catch (e) { return; }
-  if (o.mag == null || o.mag < 0) { $('#hdg').textContent = '--'; $('#card').textContent = 'Sin sensor'; return; }
-  var h = (useTrue && o.hasDecl) ? o.trueN : o.mag;
-  $('#dial').setAttribute('transform', 'rotate(' + (-h) + ' 150 150)');
-  $('#hdg').textContent = Math.round(h) + '°';
-  $('#card').textContent = CARD[Math.round(h / 45) % 8];
-  $('#decl').textContent = o.hasDecl ? 'Declinación local: ' + (o.decl >= 0 ? '+' : '') + o.decl + '°' : (useTrue ? 'Norte verdadero requiere ubicación; mostrando magnético.' : '');
-  var s = last.sig, rs = s ? (s.rsrp != null ? s.rsrp : s.dbm) : null;
-  if (rs != null) {
-    var b = Math.floor(h / 10) % 36;
-    if (bins[b] == null || rs > bins[b]) bins[b] = rs;
-  }
-  var bestI = -1;
-  for (var i = 0; i < 36; i++) if (bins[i] != null && (bestI < 0 || bins[i] > bins[bestI])) bestI = i;
-  $('#best').textContent = bestI < 0 ? '--' : bins[bestI] + ' dBm hacia ' + (bestI * 10 + 5) + '° (' + CARD[Math.round((bestI * 10 + 5) / 45) % 8] + ')';
-  if (target != null) {
-    $('#tgt').classList.remove('hidden'); $('#tgt').setAttribute('transform', 'rotate(' + target + ' 150 150)');
-    var d = ((target - h + 540) % 360) - 180, ad = Math.abs(Math.round(d)), el = $('#delta');
-    if (ad <= 3) { el.textContent = '✓ Alineado con el objetivo (' + target + '°)'; el.style.color = '#22c55e'; }
-    else { el.textContent = (d > 0 ? 'Gira a la derecha ' : 'Gira a la izquierda ') + ad + '°  →  objetivo ' + target + '°'; el.style.color = '#f59e0b'; }
-  } else {
-    $('#tgt').classList.add('hidden'); var e2 = $('#delta'); e2.style.color = ''; e2.textContent = 'Mantén el teléfono plano y alejado de metales e imanes.';
+  const t0 = performance.now();
+  try {
+    await fetch("https://www.openstreetmap.org/favicon.ico?_=" + Date.now(), { cache: "no-store", mode: "no-cors" });
+    const ping = Math.max(12, Math.round(performance.now() - t0));
+    pingEl.textContent = `${ping} ms`;
+    downEl.textContent = ping < 80 ? "Alta (~25+ Mbps)" : ping < 200 ? "Media (~8–20 Mbps)" : "Baja / Latencia alta";
+  } catch (_) {
+    pingEl.textContent = "Sin red / Offline";
+    downEl.textContent = "0 Mbps";
   }
 }
-function curHeading() {
-  try { var o = JSON.parse(A.getHeading()); if (o.mag < 0) return null; return Math.round((useTrue && o.hasDecl) ? o.trueN : o.mag) % 360; } catch (e) { return null; }
-}
 
-// ---------- eventos ----------
-function showTab(name) {
-  activeTab = name;
-  $$('.tab').forEach(function (t) { t.classList.toggle('active', t.id === 'tab-' + name); });
-  $$('nav button').forEach(function (b) { b.classList.toggle('on', b.dataset.tab === name); });
-  if (name === 'mapa') { drawMap(); drawList(); }
-}
-function bind() {
-  $$('nav button').forEach(function (b) { b.addEventListener('click', function () { showTab(b.dataset.tab); }); });
-  $$('[data-set]').forEach(function (b) { b.addEventListener('click', function () { if (A) A.openSettings(b.dataset.set); else toast('Solo disponible en la app'); }); });
-  $('#btnPerm').addEventListener('click', function () { if (A) A.requestPerms(); });
-  $('#awake').addEventListener('change', function (e) { if (A) A.keepScreenOn(e.target.checked); LS.set('al_awake', e.target.checked); });
-  $('#filter').addEventListener('change', drawMap);
-  $('#map').addEventListener('click', function (e) {
-    var r = this.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top, best = null, bd = 28;
-    hits.forEach(function (h) { var d = Math.hypot(h.x - x, h.y - y); if (d < bd) { bd = d; best = h; } });
-    $('#hit').textContent = best ? best.txt : 'Toca un punto para ver sus detalles.';
-  });
-  $('#xCsvP').addEventListener('click', exportPts);
-  $('#xCsvC').addEventListener('click', exportOut);
-  $('#xJson').addEventListener('click', function () { save('antena-libre-' + stamp() + '.json', 'application/json', jsonAll()); });
-  $('#xShare').addEventListener('click', function () { if (A) A.shareText('Antena Libre - datos', jsonAll()); else toast('Solo disponible en la app'); });
-  var armed = null;
-  $('#clear').addEventListener('click', function () {
-    var b = this;
-    if (!armed) {
-      b.textContent = 'Toca otra vez para confirmar el borrado';
-      armed = setTimeout(function () { armed = null; b.textContent = 'Borrar historial'; }, 4000); return;
+document.addEventListener("DOMContentLoaded", () => {
+  initTabs();
+  initLongPress();
+  initBandsTab();
+  initAntennaCalculatorAndPlans();
+  refreshTelemetry();
+  renderHistory();
+
+  document.getElementById("btnRefresh").addEventListener("click", refreshTelemetry);
+  document.getElementById("btnWifiScan").addEventListener("click", () => {
+    if (window.AntenaBridge && typeof window.AntenaBridge.scanWifi === "function") {
+      try { window.AntenaBridge.scanWifi(); } catch (_) {}
     }
-    clearTimeout(armed); armed = null; b.textContent = 'Borrar historial';
-    outages = []; points = []; lastPt = null; persist(); drawMap(); drawList(); toast('Historial borrado');
+    refreshTelemetry();
   });
-  $$('input[name=north]').forEach(function (r) { r.addEventListener('change', function () { useTrue = r.value === 'true' && r.checked; }); });
-  $('#tset').addEventListener('click', function () {
-    var v = parseInt($('#tin').value, 10);
-    if (isNaN(v)) { toast('Escribe un rumbo de 0 a 359'); return; }
-    target = ((v % 360) + 360) % 360;
+  document.getElementById("btnOpenNetSettings").addEventListener("click", () => {
+    if (window.AntenaBridge && typeof window.AntenaBridge.openNetworkSettings === "function") {
+      try { window.AntenaBridge.openNetworkSettings(); return; } catch (_) {}
+    }
+    openGuideModal("advisor");
   });
-  $('#tnow').addEventListener('click', function () { var h = curHeading(); if (h == null) toast('Sin lectura de brújula'); else { target = h; $('#tin').value = h; } });
-  $('#tbest').addEventListener('click', function () {
-    var bi2 = -1; for (var i = 0; i < 36; i++) if (bins[i] != null && (bi2 < 0 || bins[i] > bins[bi2])) bi2 = i;
-    if (bi2 < 0) toast('Aún no hay barrido: gira 360° despacio'); else { target = bi2 * 10 + 5; $('#tin').value = target; }
+  document.getElementById("btnRunSpeed").addEventListener("click", runSpeedAndPingTest);
+  document.getElementById("btnClearHistory").addEventListener("click", () => {
+    localStorage.removeItem(STORAGE_KEY);
+    renderHistory();
   });
-  $('#tclr').addEventListener('click', function () { target = null; for (var i = 0; i < 36; i++) bins[i] = null; $('#tin').value = ''; $('#best').textContent = '--'; });
-  window.addEventListener('resize', function () { if (activeTab === 'mapa') drawMap(); });
-}
+  document.getElementById("btnCloseModal").addEventListener("click", () => document.getElementById("guideModal").classList.add("hidden"));
+  document.getElementById("btnModalOk").addEventListener("click", () => document.getElementById("guideModal").classList.add("hidden"));
+  document.getElementById("btnLang").addEventListener("click", () => {
+    currentLang = currentLang === "es" ? "en" : "es";
+    document.getElementById("statusBanner").textContent = currentLang === "es"
+      ? "Pública · Global (Incl. Cuba) · Offline-Ready"
+      : "Public · Global (Incl. Cuba) · Offline-Ready";
+  });
 
-function start() {
-  closeStale(); buildDial(); bind(); legend($('#legend')); legend($('#legend2'));
-  var aw = LS.get('al_awake', false); $('#awake').checked = aw; if (A && aw) A.keepScreenOn(true);
-  tick(); setInterval(tick, CFG.pollMs); setInterval(compassTick, 120);
-}
-
-fetch('../app/config.json').then(function (r) { return r.json(); }).then(function (c) {
-  for (var k in c) { if (k === 'thresholds') { for (var t in c.thresholds) CFG.thresholds[t] = c.thresholds[t]; } else CFG[k] = c[k]; }
-}).catch(function () {}).then(start);
-})();
+  setInterval(refreshTelemetry, 6000);
+});
