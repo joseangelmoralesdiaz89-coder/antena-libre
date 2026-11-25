@@ -2,7 +2,7 @@ name: Build Android APK
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "principal" ]
   workflow_dispatch:
 
 jobs:
@@ -20,18 +20,21 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Create Gradle wrapper & local config
+      - name: Generate icon PNGs
         run: |
-          mkdir -p android/gradle/wrapper
-          cat << 'GRD' > android/settings.gradle
-          rootProject.name = 'AntenaLibre'
-          include ':app'
-          GRD
-          cat << 'PRP' > android/gradle.properties
-          org.gradle.jvmargs=-Xmx2048m
-          android.useAndroidX=true
-          PRP
-          gradle wrapper --gradle-version 8.7 -p android
+          python3 -c '
+          import struct, zlib
+          def png(w, h, rgba):
+              def chunk(tag, data):
+                  return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
+              raw = b"".join(b"\x00" + bytes(rgba(x, y)) for y in range(h) for x in range(w))
+              return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack("!IIBBBBB", w, h, 8, 6, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+          sizes = {"mdpi":48,"hdpi":72,"xhdpi":96,"xxhdpi":144,"xxxhdpi":192}
+          for d, s in sizes.items():
+              p = f"android/app/src/main/res/mipmap-{d}/ic_launcher.png"
+              data = png(s, s, lambda x,y,s=s: (17,17,17,255) if (x-s/2)**2+(y-s/2)**2 <= (s*0.42)**2 else (0,200,120,255) if abs(x-s/2)<s*0.05 and y>s*0.45 else (0,0,0,0))
+              open(p, "wb").write(data)
+          '
 
       - name: Copy web & app assets
         run: |
@@ -42,7 +45,7 @@ jobs:
       - name: Build Debug APK
         run: |
           cd android
-          ./gradlew assembleDebug
+          gradle assembleDebug --no-daemon
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
