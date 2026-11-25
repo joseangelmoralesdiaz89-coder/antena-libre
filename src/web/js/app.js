@@ -404,3 +404,244 @@ document.addEventListener("DOMContentLoaded", () => {
   drawAlignmentBoard();
   renderLog();
 });
+
+let alignTimer = null, alignActive = false;
+let phoneX = 0, phoneY = 0, phoneAngle = 0;
+let bestDbm = -120, bestLabel = "Sin marcar";
+let liveDbm = -87, liveSinr = 8, liveFreq = 1842, liveBand = "LTE B3", liveLat = 23.1136, liveLon = -82.3666;
+let leafletMap = null, uM = null, aM = null, rL = null;
+
+function drawBoard() {
+  const c = document.getElementById("alignCanvas");
+  if (!c) return;
+  const ctx = c.getContext("2d");
+  const w = c.width, h = c.height;
+  ctx.clearRect(0, 0, w, h);
+
+  ctx.strokeStyle = "#132133";
+  for (let x = 0; x <= w; x += 32) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, h); ctx.stroke(); }
+  for (let y = 0; y <= h; y += 32) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+
+  const px0 = 65, py0 = 24, pw = w - 130, ph = h - 48;
+  ctx.fillStyle = "#101b29";
+  ctx.strokeStyle = "#38bdf8";
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.roundRect(px0, py0, pw, ph, 14);
+  ctx.fill();
+  ctx.stroke();
+
+  const cx = w / 2, cy = h / 2;
+  const glow = ctx.createRadialGradient(cx, cy, 8, cx, cy, 80);
+  glow.addColorStop(0, "rgba(16, 185, 129, 0.35)");
+  glow.addColorStop(1, "rgba(16, 185, 129, 0)");
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(cx, cy, 80, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#8fa4bf";
+  ctx.font = "11px sans-serif";
+  ctx.fillText("TABLITA SIN CONECTOR (APOYO)", px0 + 12, py0 + 18);
+
+  ctx.save();
+  ctx.translate(cx + phoneX * 1.3, cy + phoneY * 1.1);
+  ctx.rotate((phoneAngle * Math.PI) / 180);
+  ctx.fillStyle = alignActive ? "rgba(16, 185, 129, 0.24)" : "rgba(56, 189, 248, 0.16)";
+  ctx.strokeStyle = alignActive ? "#10b981" : "#38bdf8";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.roundRect(-28, -50, 56, 100, 9);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = "#f59e0b";
+  ctx.beginPath();
+  ctx.arc(0, -35, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = "#f1f6fc";
+  ctx.font = "bold 11px sans-serif";
+  ctx.fillText("CEL", -11, 5);
+  ctx.restore();
+
+  const deg = Math.round(((phoneAngle % 360) + 360) % 360);
+  document.getElementById("hudAngle").textContent = `${deg}°`;
+  document.getElementById("hudXY").textContent = `${Math.round(phoneX)} / ${Math.round(phoneY)} mm`;
+  document.getElementById("hudGain").textContent = `${liveDbm} dBm · ${alignActive ? "GIRANDO" : "PAUSA"}`;
+}
+
+function startAlign() {
+  alignActive = true;
+  let tick = 0;
+  clearInterval(alignTimer);
+  alignTimer = setInterval(() => {
+    tick += 1;
+    readTelemetry();
+    phoneAngle = (phoneAngle + 15) % 360;
+    phoneX = Math.round(Math.sin(tick * 0.35) * 26);
+    phoneY = Math.round(Math.cos(tick * 0.25) * 16);
+    const est = liveDbm + Math.round(Math.cos((phoneAngle * Math.PI) / 180) * 3);
+    if (est > bestDbm) {
+      bestDbm = est;
+      bestLabel = `${Math.round(phoneAngle)}° · X:${phoneX} Y:${phoneY}mm`;
+      document.getElementById("mBest").textContent = `${bestDbm} dBm`;
+      document.getElementById("mBestPos").textContent = bestLabel;
+    }
+    drawBoard();
+  }, 320);
+  drawBoard();
+}
+
+function stopAlign() {
+  alignActive = false;
+  clearInterval(alignTimer);
+  drawBoard();
+}
+
+function readTelemetry() {
+  let d = null;
+  if (window.AntenaBridge && typeof window.AntenaBridge.getTelemetryJson === "function") {
+    try { d = JSON.parse(window.AntenaBridge.getTelemetryJson()); } catch (_) {}
+  }
+  liveDbm = d && typeof d.dbm === "number" ? d.dbm : -87;
+  liveSinr = d && typeof d.sinr === "number" ? d.sinr : 8;
+  liveFreq = d && typeof d.freqMhz === "number" ? d.freqMhz : 1842;
+  liveBand = d && d.band ? d.band : "LTE B3";
+  if (d && typeof d.lat === "number") liveLat = d.lat;
+  if (d && typeof d.lon === "number") liveLon = d.lon;
+
+  const pct = Math.max(5, Math.min(100, Math.round(((Math.max(-120, Math.min(-55, liveDbm)) + 120) / 65) * 100)));
+  document.getElementById("mDbm").textContent = `${liveDbm} dBm`;
+  document.getElementById("mDbmSub").textContent = liveDbm >= -80 ? "Fuerte" : liveDbm >= -95 ? "Media" : "Débil";
+  document.getElementById("mDbmBar").style.width = `${pct}%`;
+  document.getElementById("mSinr").textContent = `${liveSinr} dB`;
+  document.getElementById("mFreq").textContent = `${liveFreq} MHz`;
+  document.getElementById("mFreqSub").textContent = liveBand;
+
+  const list = document.getElementById("scanList");
+  const cells = (d && Array.isArray(d.cellList)) ? d.cellList : [];
+  const wifis = (d && Array.isArray(d.wifiList)) ? d.wifiList : [];
+  const rows = [
+    ...cells.map((x) => `<div class="box"><strong>${x.tech || "Celda"}</strong> · ${x.band || ""} · <strong>${x.dbm} dBm</strong></div>`),
+    ...wifis.map((w) => `<div class="box"><strong>${w.ssid || "Wi-Fi"}</strong> · ${w.freqMhz} MHz · <strong>${w.rssi} dBm</strong></div>`)
+  ];
+  list.innerHTML = rows.length ? rows.join("") : `<div class="box">Pulsa Escanear o permite ubicación para ver celdas y redes.</div>`;
+}
+
+function updateMap() {
+  const distM = Math.max(30, Math.round(60 * Math.pow(10, (-68 - Math.max(-120, Math.min(-45, liveDbm))) / 34)));
+  document.getElementById("mapInfo").textContent = `GPS: ${liveLat.toFixed(5)}, ${liveLon.toFixed(5)} · Distancia est.: ~${distM} m`;
+  const aLat = liveLat + (distM / 111320) * 0.7;
+  const aLon = liveLon + (distM / (111320 * Math.max(0.2, Math.cos((liveLat * Math.PI) / 180)))) * 0.7;
+
+  if (typeof L !== "undefined" && navigator.onLine) {
+    document.getElementById("mapCanvasWrap").classList.remove("hidden");
+    document.getElementById("mapFallback").classList.add("hidden");
+    if (!leafletMap) {
+      leafletMap = L.map("mapCanvasWrap").setView([liveLat, liveLon], 15);
+      const t = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "© OSM" });
+      t.on("tileerror", () => drawFallbackMap(distM));
+      t.addTo(leafletMap);
+    } else leafletMap.setView([liveLat, liveLon], 15);
+    if (uM) leafletMap.removeLayer(uM);
+    if (aM) leafletMap.removeLayer(aM);
+    if (rL) leafletMap.removeLayer(rL);
+    uM = L.circleMarker([liveLat, liveLon], { radius: 7, color: "#10b981" }).addTo(leafletMap);
+    aM = L.circleMarker([aLat, aLon], { radius: 7, color: "#f59e0b" }).addTo(leafletMap);
+    rL = L.polyline([[liveLat, liveLon], [aLat, aLon]], { color: "#38bdf8", dashArray: "6,6" }).addTo(leafletMap);
+  } else drawFallbackMap(distM);
+}
+
+function drawFallbackMap(distM) {
+  document.getElementById("mapCanvasWrap").classList.add("hidden");
+  const c = document.getElementById("mapFallback");
+  c.classList.remove("hidden");
+  const ctx = c.getContext("2d");
+  ctx.clearRect(0, 0, c.width, c.height);
+  ctx.fillStyle = "#10b981"; ctx.beginPath(); ctx.arc(140, 165, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#f59e0b"; ctx.beginPath(); ctx.arc(470, 75, 9, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = "#38bdf8"; ctx.setLineDash([6, 6]); ctx.beginPath(); ctx.moveTo(140, 165); ctx.lineTo(470, 75); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle = "#f1f6fc"; ctx.font = "12px sans-serif"; ctx.fillText(`Tú · Antena ~${distM} m`, 160, 155);
+}
+
+function addLog(msg) {
+  const arr = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+  arr.unshift({ t: new Date().toLocaleTimeString(), msg });
+  localStorage.setItem(LOG_KEY, JSON.stringify(arr.slice(0, 30)));
+  renderLog();
+}
+
+function renderLog() {
+  const arr = JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+  document.getElementById("logList").innerHTML = arr.length
+    ? arr.map((r) => `<div class="hist-row"><span>${r.t}</span><span>${r.msg}</span></div>`).join("")
+    : `<div class="hist-row"><span>Sin registros</span><span>--</span></div>`;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const selTech = document.getElementById("selTech"), selBand = document.getElementById("selBand");
+  const updatePad = () => {
+    const b = (BANDS[selTech.value] || BANDS.LTE)[Number(selBand.value) || 0];
+    const gap = document.getElementById("inpGapMm").value || 4;
+    document.getElementById("padSummary").innerHTML = `<strong>${b.code}</strong> (${b.mhz} MHz) · Holgura: <strong>${gap} mm</strong> · ${b.note}. Sin enchufar cable al teléfono.`;
+    document.getElementById("cFreq").value = b.mhz;
+    renderAntennaPlans(b.mhz, Number(document.getElementById("cLen").value) || 3, document.getElementById("cCable").value);
+  };
+  const fillBands = () => {
+    const list = BANDS[selTech.value] || BANDS.LTE;
+    selBand.innerHTML = list.map((b, i) => `<option value="${i}">${b.code}</option>`).join("");
+    updatePad();
+  };
+
+  document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((b) => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach((s) => s.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+    if (btn.dataset.tab === "maptab") { updateMap(); if (leafletMap) setTimeout(() => leafletMap.invalidateSize(), 150); }
+    if (btn.dataset.tab === "align") drawBoard();
+  }));
+
+  const ac = document.getElementById("alignCanvas");
+  ac.addEventListener("pointermove", (e) => {
+    if (!alignActive && e.buttons === 0) return;
+    const r = ac.getBoundingClientRect();
+    const nx = ((e.clientX - r.left) / r.width) * 2 - 1;
+    const ny = ((e.clientY - r.top) / r.height) * 2 - 1;
+    phoneX = Math.max(-42, Math.min(42, Math.round(nx * 42)));
+    phoneY = Math.max(-32, Math.min(32, Math.round(ny * 32)));
+    phoneAngle = Math.round(((Math.atan2(ny, nx) * 180) / Math.PI + 360) % 360);
+    drawBoard();
+  });
+
+  selTech.addEventListener("change", fillBands);
+  selBand.addEventListener("change", updatePad);
+  document.getElementById("inpGapMm").addEventListener("input", updatePad);
+  ["cFreq", "cLen", "cCable"].forEach((id) => document.getElementById(id).addEventListener("input", () => {
+    renderAntennaPlans(Number(document.getElementById("cFreq").value) || 1842, Number(document.getElementById("cLen").value) || 3, document.getElementById("cCable").value);
+  }));
+
+  document.getElementById("btnStartAlign").addEventListener("click", startAlign);
+  document.getElementById("btnStopAlign").addEventListener("click", stopAlign);
+  document.getElementById("btnMarkPeak").addEventListener("click", () => {
+    bestDbm = liveDbm;
+    bestLabel = `${Math.round(phoneAngle)}° · X:${phoneX} Y:${phoneY}mm`;
+    document.getElementById("mBest").textContent = `${bestDbm} dBm`;
+    document.getElementById("mBestPos").textContent = bestLabel;
+    addLog(`Pico ${bestDbm} dBm en ${bestLabel}`);
+  });
+  document.getElementById("btnScanNow").addEventListener("click", () => { readTelemetry(); drawBoard(); addLog(`Lectura ${liveDbm} dBm (${liveFreq} MHz)`); });
+  document.getElementById("btnOpenNet").addEventListener("click", () => { if (window.AntenaBridge && window.AntenaBridge.openNetworkSettings) try { window.AntenaBridge.openNetworkSettings(); } catch (_) {} });
+  document.getElementById("btnPing").addEventListener("click", async () => {
+    const t0 = performance.now();
+    try { await fetch("https://www.openstreetmap.org/favicon.ico?_=" + Date.now(), { cache: "no-store", mode: "no-cors" }); const ms = Math.max(10, Math.round(performance.now() - t0)); document.getElementById("pingOut").textContent = `Ping: ${ms} ms`; addLog(`Ping ${ms} ms`); }
+    catch (_) { document.getElementById("pingOut").textContent = "Ping: Sin red / Offline"; }
+  });
+  document.getElementById("btnClearLog").addEventListener("click", () => { localStorage.removeItem(LOG_KEY); renderLog(); });
+  document.getElementById("btnCloseG").addEventListener("click", () => document.getElementById("guideModal").classList.add("hidden"));
+  document.getElementById("btnOkG").addEventListener("click", () => document.getElementById("guideModal").classList.add("hidden"));
+
+  fillBands();
+  readTelemetry();
+  drawBoard();
+  renderLog();
+});
