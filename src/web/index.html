@@ -3,156 +3,104 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Antena Libre · Tablita, Alineación y Planos</title>
+  <title>Antena Libre</title>
   <link rel="stylesheet" href="css/app.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="dot-live"></span>
-      <div>
-        <h1>ANTENA LIBRE <span class="tag">PRO RF</span></h1>
-        <small id="statusLine">Tablita de apoyo · Sin conector · Global</small>
-      </div>
+  <header class="top">
+    <div>
+      <h1>ANTENA LIBRE <span class="badge">v0.3</span></h1>
+      <small>Antena de apoyo en tablita · Sin conector al teléfono</small>
     </div>
-    <button id="btnScanNow" class="btn-p">Escanear</button>
+    <button id="btnRefresh" class="btn">Medir</button>
   </header>
 
   <nav class="tabs">
-    <button class="tab active" data-tab="align">Alineación</button>
-    <button class="tab" data-tab="pad">Tablita y Banda</button>
-    <button class="tab" data-tab="plans">Planos y Fotos</button>
-    <button class="tab" data-tab="maptab">Mapa y Log</button>
+    <button class="tab active" data-v="align">Alineación</button>
+    <button class="tab" data-v="plans">Planos y Fotos</button>
+    <button class="tab" data-v="bands">Bandas y Red</button>
   </nav>
 
-  <main id="tab-align" class="tab-content active">
-    <section class="grid-2">
-      <div class="card lp-card" data-k="sig">
-        <div class="lp-bar"></div><span class="lp-badge">3s guía</span>
-        <div class="m-title">Señal (dBm)</div>
-        <div id="mDbm" class="m-val">-- dBm</div>
-        <div id="mDbmSub" class="m-sub">Leyendo...</div>
-        <div class="meter"><div id="mDbmBar" class="meter-fill"></div></div>
+  <section id="v-align" class="view active">
+    <div class="grid2">
+      <div class="kpi">
+        <span>Señal actual</span>
+        <strong id="kDbm">-- dBm</strong>
+        <small id="kQual">Esperando lectura...</small>
+        <div class="bar"><div id="kBar"></div></div>
       </div>
-      <div class="card lp-card" data-k="sinr">
-        <div class="lp-bar"></div><span class="lp-badge">3s guía</span>
-        <div class="m-title">Calidad / SINR</div>
-        <div id="mSinr" class="m-val">-- dB</div>
-        <div id="mSinrSub" class="m-sub">Margen de enlace</div>
+      <div class="kpi">
+        <span>Mejor punto en tablita</span>
+        <strong id="kBest">-- dBm</strong>
+        <small id="kBestPos">Sin guardar aún</small>
       </div>
-      <div class="card lp-card" data-k="freq">
-        <div class="lp-bar"></div><span class="lp-badge">3s guía</span>
-        <div class="m-title">Frecuencia</div>
-        <div id="mFreq" class="m-val">-- MHz</div>
-        <div id="mFreqSub" class="m-sub">Banda activa</div>
-      </div>
-      <div class="card lp-card" data-k="best">
-        <div class="lp-bar"></div><span class="lp-badge">3s guía</span>
-        <div class="m-title">Pico en Tablita</div>
-        <div id="mBest" class="m-val">-- dBm</div>
-        <div id="mBestPos" class="m-sub">Sin calibrar aún</div>
-      </div>
-    </section>
+    </div>
 
-    <section class="card">
+    <div class="card">
       <h2>Alineación del Teléfono sobre la Tablita</h2>
-      <p class="copy">Pulsa <strong>Iniciar alineación del teléfono</strong> y desliza o gira el celular sobre la tablita (o usa los controles/sensores). Verás el teléfono girar y moverse encima de la tablita buscando el punto de mayor señal.</p>
-      <div class="row-btns">
-        <button id="btnStartAlign" class="btn-p">Iniciar alineación del teléfono</button>
-        <button id="btnStopAlign" class="btn-s">Detener</button>
-        <button id="btnMarkPeak" class="btn-s">Guardar punto óptimo</button>
-        <button id="btnOpenNet" class="btn-s">Ajustes Red</button>
+      <p class="p">Apoya el celular encima de la tablita (sin enchufar cable). Pulsa <strong>Iniciar alineación del teléfono</strong> y gira/mueve el teléfono sobre la tablita (o desliza el dedo en el dibujo) hasta encontrar la mayor señal.</p>
+      <div class="row">
+        <button id="btnStart" class="btn">Iniciar alineación del teléfono</button>
+        <button id="btnStop" class="btn2">Detener</button>
+        <button id="btnSavePeak" class="btn2">Guardar mejor punto</button>
       </div>
-      <div class="align-stage">
-        <canvas id="alignCanvas" class="align-canvas" width="640" height="250"></canvas>
-        <div class="align-hud">
-          <div class="hud-box"><span>Ángulo teléfono</span><strong id="hudAngle">0°</strong></div>
-          <div class="hud-box"><span>Posición X / Y</span><strong id="hudXY">0 / 0 mm</strong></div>
-          <div class="hud-box"><span>Ganancia / Calidad</span><strong id="hudGain">Esperando</strong></div>
+      <div class="stage">
+        <canvas id="board" class="board" width="600" height="260"></canvas>
+        <div class="hud">
+          <div><span>Giro teléfono</span><strong id="hAng">0°</strong></div>
+          <div><span>Posición X / Y</span><strong id="hPos">0 / 0 mm</strong></div>
+          <div><span>Estado</span><strong id="hState">Listo</strong></div>
+        </div>
+        <div class="sliders">
+          <label>Girar teléfono manual (0°–360°)
+            <input id="rngAngle" type="range" min="0" max="360" value="0" />
+          </label>
+          <label>Desplazar izquierda / derecha (mm)
+            <input id="rngX" type="range" min="-45" max="45" value="0" />
+          </label>
         </div>
       </div>
-    </section>
-  </main>
-  <main id="tab-pad" class="tab-content">
-    <section class="card">
-      <h2>Configuración de la Tablita sin Conector</h2>
-      <div class="pad-grid">
-        <label>Tecnología
-          <select id="selTech" class="ctrl">
-            <option value="LTE">4G LTE</option>
-            <option value="NR">5G NR</option>
-            <option value="WIFI">Wi-Fi</option>
-            <option value="UMTS">3G UMTS</option>
-          </select>
-        </label>
-        <label>Banda / Canal
-          <select id="selBand" class="ctrl"></select>
-        </label>
-        <label>Tipo de tablita de apoyo
-          <select id="selPadType" class="ctrl">
-            <option value="slot">Tablita ranurada / acoplador inductivo (sin cable al cel)</option>
-            <option value="patch">Tablita plana con plano reflector y acople cercano (3–10 mm)</option>
-            <option value="yagi_pad">Tablita direccional Yagi + base de apoyo</option>
-          </select>
-        </label>
-        <label>Separación cel-tablita (mm)
-          <input id="inpGapMm" type="number" class="ctrl" value="4" min="0" max="30" step="1" />
-        </label>
-      </div>
-      <div id="padSummary" class="box"></div>
-    </section>
-    <section class="card">
-      <h2>Celdas y Redes Detectadas</h2>
-      <div id="scanList" class="stack"></div>
-    </section>
-  </main>
-
-  <main id="tab-plans" class="tab-content">
-    <section class="card">
-      <h2>Medidas, Coaxial y Pérdida de Acoplamiento</h2>
-      <div class="calc-grid">
-        <label>Frecuencia (MHz)<input id="cFreq" type="number" class="ctrl" value="1842" min="50" max="28000" /></label>
-        <label>Largo cable (m)<input id="cLen" type="number" class="ctrl" value="3" min="0.1" max="100" step="0.5" /></label>
-        <label>Cable coaxial
-          <select id="cCable" class="ctrl">
-            <option value="LMR400">LMR-400 (50 Ω · baja pérdida)</option>
-            <option value="LMR200">LMR-200 (50 Ω)</option>
-            <option value="RG6">RG-6 Quad (75 Ω)</option>
-            <option value="RG58">RG-58 (50 Ω)</option>
-          </select>
-        </label>
-      </div>
-      <div id="cPhysics" class="box"></div>
-    </section>
-    <div id="plansCards" class="stack"></div>
-  </main>
-
-  <main id="tab-maptab" class="tab-content">
-    <section class="card">
-      <h2>Mapa y Registro de Pruebas</h2>
-      <small id="mapInfo">GPS: esperando...</small>
-      <div id="mapCanvasWrap" class="map-box" style="margin-top:8px;"></div>
-      <canvas id="mapFallback" class="map-box hidden" width="640" height="240" style="margin-top:8px;"></canvas>
-      <div class="row-btns">
-        <button id="btnPing" class="btn-p">Test Ping</button>
-        <button id="btnClearLog" class="btn-s">Borrar Log</button>
-      </div>
-      <div id="pingOut" class="box">Ping: -- ms</div>
-      <div id="logList" class="hist-list"></div>
-    </section>
-  </main>
-
-  <div id="guideModal" class="modal hidden">
-    <div class="modal-card">
-      <div class="modal-top"><h3 id="gTitle">Guía</h3><button id="btnCloseG" class="btn-x">✕</button></div>
-      <p id="gDesc" class="copy"></p>
-      <ul id="gSteps" class="specs"></ul>
-      <button id="btnOkG" class="btn-p" style="width:100%;margin-top:10px;">Entendido</button>
     </div>
-  </div>
+  </section>
 
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <section id="v-plans" class="view">
+    <div class="card">
+      <h2>Calculadora Fácil de Medidas y Cable</h2>
+      <div class="sliders">
+        <label>Frecuencia (MHz)
+          <input id="inFreq" type="number" class="ctrl" value="1842" min="50" max="6000" />
+        </label>
+        <label>Largo del cable coaxial (m)
+          <input id="inLen" type="number" class="ctrl" value="3" min="0.5" max="50" step="0.5" />
+        </label>
+      </div>
+      <div id="calcOut" class="box"></div>
+    </div>
+    <div id="plansList" class="stack"></div>
+  </section>
+
+  <section id="v-bands" class="view">
+    <div class="card">
+      <h2>Banda de Trabajo y Redes Detectadas</h2>
+      <label>Selecciona tu banda principal
+        <select id="selBand" class="ctrl">
+          <option value="758">4G Banda 28 (700 MHz · Máximo alcance y paredes)</option>
+          <option value="806">4G Banda 20 (800 MHz · Buena cobertura interior)</option>
+          <option value="942">4G/3G Banda 8 (900 MHz · Zona rural / abierta)</option>
+          <option value="1842" selected>4G Banda 3 (1800 MHz · Equilibrio alcance/velocidad)</option>
+          <option value="2140">4G/3G Banda 1 (2100 MHz · Alta capacidad)</option>
+          <option value="2655">4G Banda 7 (2600 MHz · Alta velocidad cerca)</option>
+          <option value="3500">5G Banda n78 (3500 MHz · Ultra velocidad)</option>
+          <option value="2437">Wi-Fi 2.4 GHz (2437 MHz · Alcance amplio)</option>
+        </select>
+      </label>
+      <div class="row">
+        <button id="btnNetSettings" class="btn2">Abrir Ajustes de Red del Teléfono</button>
+      </div>
+      <div id="netList" class="stack" style="margin-top:10px;"></div>
+    </div>
+  </section>
+
   <script src="js/app.js"></script>
 </body>
 </html>
