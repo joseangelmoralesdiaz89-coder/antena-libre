@@ -1,134 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Antena Libre v1.4 · RF, Torres, Planos y Coaxial</title>
-  <link rel="stylesheet" href="css/app.css" />
-  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Antena Libre</title>
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-dot"></span>
+<header>
+  <h1>Antena Libre</h1>
+  <span id="chip" class="chip">Sin datos</span>
+</header>
+
+<main>
+  <!-- ============ SEÑAL ============ -->
+  <section id="tab-senal" class="tab active">
+    <div id="banner" class="banner hidden"></div>
+
+    <div class="card hero">
+      <div id="qdot" class="qdot"></div>
       <div>
-        <h1>ANTENA LIBRE <span class="ver-tag">v1.4</span></h1>
-        <small id="statusBanner">Pública · Global (Incl. Cuba) · Offline-Ready</small>
+        <div id="qname" class="qname">--</div>
+        <div id="qsub" class="muted">Esperando datos…</div>
       </div>
     </div>
-    <div class="top-actions">
-      <button id="btnLang" class="btn-ghost" title="Idioma">ES/EN</button>
-      <button id="btnRefresh" class="btn-primary">Escanear</button>
+
+    <div class="card">
+      <div class="big"><span id="rsrp">--</span><small> dBm · RSRP</small></div>
+      <div class="bar"><i id="barfill"></i></div>
+      <div class="scale"><span>-140</span><span>-110</span><span>-90</span><span>-80</span><span>-44</span></div>
     </div>
-  </header>
 
-  <nav class="tabs" role="tablist">
-    <button class="tab active" data-tab="panel">Señal y Mapa</button>
-    <button class="tab" data-tab="bands">Selector Bandas</button>
-    <button class="tab" data-tab="antenas">Planos y Cables</button>
-    <button class="tab" data-tab="diag">Test y Historial</button>
-  </nav>
-
-  <main id="tab-panel" class="tab-content active">
-    <p class="hint">Mantén presionada cualquier tarjeta <strong>3 segundos</strong> para ver qué significa, por qué ocurre y cómo mejorar el número.</p>
-    <section class="grid-metrics">
-      <div class="card lp-card" data-metric="rsrp">
-        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
-        <div class="metric-title">Señal (RSRP/RSSI)</div>
-        <div id="mSignal" class="metric-val">-- dBm</div>
-        <div id="mSignalSub" class="metric-sub">Calculando...</div>
-        <div class="sig-meter"><div id="sigMeterFill" class="sig-fill"></div></div>
-      </div>
-      <div class="card lp-card" data-metric="sinr">
-        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
-        <div class="metric-title">Calidad / SINR</div>
-        <div id="mSinr" class="metric-val">-- dB</div>
-        <div id="mSinrSub" class="metric-sub">Relación señal/ruido</div>
-      </div>
-      <div class="card lp-card" data-metric="freq">
-        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
-        <div class="metric-title">Frecuencia Actual</div>
-        <div id="mFreq" class="metric-val">-- MHz</div>
-        <div id="mFreqSub" class="metric-sub">Banda / Canal</div>
-      </div>
-      <div class="card lp-card" data-metric="dist">
-        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
-        <div class="metric-title">Antena y Distancia</div>
-        <div id="mDist" class="metric-val">-- m</div>
-        <div id="mDistSub" class="metric-sub">Estimación por enlace</div>
-      </div>
-    </section>
-    <section class="card advisor-card lp-card" data-metric="advisor">
-      <div class="lp-progress"></div>
-      <div class="advisor-header"><h2>Frecuencia Conectada vs. Recomendada</h2><span class="pill" id="linkModePill">AUTO</span></div>
-      <div class="freq-compare">
-        <div class="freq-box"><span>Conectado ahora</span><strong id="freqNow">--</strong></div>
-        <div class="freq-arrow">➜</div>
-        <div class="freq-box best"><span>Debes conectarte a</span><strong id="freqBest">--</strong></div>
-      </div>
-      <p id="freqGuideText" class="body-copy"></p>
-      <div class="btn-row">
-        <button id="btnOpenNetSettings" class="btn-secondary">Cambiar Banda / Red (Ajustes)</button>
-        <button id="btnWifiScan" class="btn-secondary">Escanear Wi-Fi</button>
-      </div>
-    </section>
-    <section class="card coach-card"><h2>Asesor Activo de Mejora</h2><p id="coachAdvice" class="body-copy"></p></section>
-    <section class="card map-card lp-card" data-metric="map">
-      <div class="lp-progress"></div>
-      <div class="map-top"><div><h2>Mapa Local · Tu Posición y Antena</h2><small id="mapCoords">GPS: esperando ubicación...</small></div><span id="mapDistanceBadge" class="badge-dist">-- m</span></div>
-      <div id="leafletMap" class="map-canvas"></div>
-      <canvas id="fallbackMapCanvas" class="map-canvas hidden" width="640" height="340"></canvas>
-      <div class="map-legend"><span><i class="dot green"></i> Tú</span><span><i class="dot amber"></i> Antena estimada</span><span><i class="dot cyan"></i> Trayectoria</span></div>
-    </section>
-  </main>
-
-  <main id="tab-bands" class="tab-content">
-    <section class="card">
-      <h2>Selector de Banda / Frecuencia</h2>
-      <div class="controls-row">
-        <label>Tecnología <select id="bandTechSelect" class="input-ctrl"><option value="LTE">4G LTE</option><option value="NR">5G NR</option><option value="UMTS">3G UMTS</option><option value="GSM">2G GSM</option><option value="WIFI">Wi-Fi</option></select></label>
-        <label>Banda / Canal <select id="bandItemSelect" class="input-ctrl"></select></label>
-        <label>Objetivo <select id="bandGoalSelect" class="input-ctrl"><option value="range">Alcance y muros</option><option value="speed">Velocidad</option><option value="balance">Equilibrio</option></select></label>
-      </div>
-      <div id="bandDetailsBox" class="info-box"></div>
-      <div class="btn-row"><button id="btnApplyBandToCalc" class="btn-primary">Enviar a Planos y Cables</button><button id="btnOpenBandSettings" class="btn-secondary">Ajustes de Red</button></div>
-    </section>
-    <section class="card"><h2>Celdas y Redes Detectadas</h2><div id="scanResultsList" class="list-stack"></div></section>
-  </main>
-
-  <main id="tab-antenas" class="tab-content">
-    <section class="card">
-      <h2>Calculadora de Medidas, Cable y Cuna sin Conector</h2>
-      <div class="calc-grid">
-        <label>Frecuencia (MHz) <input id="calcFreq" type="number" class="input-ctrl" value="2412" min="50" max="28000" /></label>
-        <label>Cable coaxial (m) <input id="calcCableLen" type="number" class="input-ctrl" value="5" min="0.1" max="100" step="0.5" /></label>
-        <label>Tipo de cable <select id="calcCableType" class="input-ctrl"><option value="RG58">RG-58 (50 Ω)</option><option value="RG6">RG-6 Quad (75 Ω)</option><option value="LMR200">LMR-200 (50 Ω)</option><option value="LMR400">LMR-400 (50 Ω)</option></select></label>
-        <label>Distancia (m) <input id="calcDist" type="number" class="input-ctrl" value="800" min="10" max="50000" step="50" /></label>
-      </div>
-      <div id="cablePhysicsBox" class="info-box"></div>
-    </section>
-    <div id="antennaPlansContainer" class="list-stack"></div>
-  </main>
-
-  <main id="tab-diag" class="tab-content">
-    <section class="card">
-      <h2>Test de Ping, Velocidad e Historial</h2>
-      <div class="btn-row"><button id="btnRunSpeed" class="btn-primary">Iniciar Test</button><button id="btnClearHistory" class="btn-secondary">Limpiar Historial</button></div>
-      <div class="grid-metrics speed-grid"><div class="mini-stat"><span>Ping</span><strong id="statPing">-- ms</strong></div><div class="mini-stat"><span>Descarga aprox.</span><strong id="statDown">-- Mbps</strong></div></div>
-      <canvas id="historyCanvas" class="history-canvas" width="640" height="180"></canvas>
-      <div id="historyList" class="history-list"></div>
-    </section>
-  </main>
-
-  <div id="guideModal" class="modal hidden" role="dialog" aria-modal="true">
-    <div class="modal-box">
-      <div class="modal-head"><h3 id="modalTitle">Guía de Señal</h3><button id="btnCloseModal" class="btn-close">✕</button></div>
-      <p id="modalWhat" class="body-copy"></p>
-      <h4>Cómo mejorar este valor:</h4><ul id="modalSteps" class="steps-list"></ul>
-      <button id="btnModalOk" class="btn-primary full-btn">Entendido</button>
+    <div class="grid">
+      <div class="m"><b id="sinr">--</b><span>SINR (dB)</span></div>
+      <div class="m"><b id="rsrq">--</b><span>RSRQ (dB)</span></div>
+      <div class="m"><b id="net">--</b><span>Red</span></div>
+      <div class="m"><b id="op">--</b><span>Operador</span></div>
     </div>
-  </div>
-  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  <script src="js/app.js"></script>
+
+    <div class="card rows">
+      <div><span>Registro de red</span><b id="reg">--</b></div>
+      <div><span>Internet</span><b id="inet">--</b></div>
+      <div><span>Ubicación</span><b id="gps">--</b></div>
+      <div><span>Caídas (24 h)</span><b id="n24">0</b></div>
+      <div><span>Puntos guardados</span><b id="npts">0</b></div>
+    </div>
+
+    <div id="permbox" class="card warn hidden">
+      Faltan permisos (ubicación / teléfono) para leer la señal completa y guardar coordenadas.
+      <button id="btnPerm" class="primary">Conceder permisos</button>
+    </div>
+
+    <h2>Acción rápida de red</h2>
+    <div class="btns">
+      <button data-set="mobile">Datos móviles / roaming</button>
+      <button data-set="operator">Elegir operador</button>
+      <button data-set="panel">Panel de internet</button>
+      <button data-set="airplane">Modo avión</button>
+    </div>
+
+    <label class="chk"><input type="checkbox" id="awake"> Mantener pantalla encendida (monitoreo continuo)</label>
+    <p class="muted small">El registro de caídas y puntos funciona mientras la app está abierta.</p>
+  </section>
+
+  <!-- ============ MAPA ============ -->
+  <section id="tab-mapa" class="tab">
+    <div class="row">
+      <select id="filter">
+        <option value="all">Todos los puntos</option>
+        <option value="bad">Señal mala o peor</option>
+        <option value="out">Solo caídas</option>
+      </select>
+      <span id="mapinfo" class="muted small"></span>
+    </div>
+    <canvas id="map"></canvas>
+    <div id="hit" class="muted small">Toca un punto para ver sus detalles.</div>
+    <div class="legend" id="legend"></div>
+
+    <h2>Historial de caídas</h2>
+    <div id="outlist"></div>
+
+    <h2>Exportar datos</h2>
+    <div class="btns">
+      <button id="xCsvP">CSV de puntos</button>
+      <button id="xCsvC">CSV de caídas</button>
+      <button id="xJson">JSON completo</button>
+      <button id="xShare">Compartir JSON</button>
+    </div>
+    <p class="muted small">Los archivos se guardan en la carpeta Descargas.</p>
+    <button id="clear" class="danger">Borrar historial</button>
+  </section>
+
+  <!-- ============ BRÚJULA ============ -->
+  <section id="tab-brujula" class="tab">
+    <div class="compass">
+      <svg viewBox="0 -14 300 314" id="svg">
+        <polygon points="150,-12 141,6 159,6" fill="#ef4444"/>
+        <g id="dial">
+          <circle cx="150" cy="150" r="140" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+          <g id="ticks"></g>
+          <g id="tgt" class="hidden"><polygon points="150,2 141,20 159,20" fill="#f59e0b"/></g>
+        </g>
+        <circle cx="150" cy="150" r="4" fill="#94a3b8"/>
+      </svg>
+      <div class="readout"><span id="hdg">--</span><small id="card">--</small></div>
+    </div>
+    <div id="delta" class="delta">Mantén el teléfono plano y alejado de metales e imanes.</div>
+
+    <div class="row">
+      <label class="chk"><input type="radio" name="north" value="mag" checked> Norte magnético</label>
+      <label class="chk"><input type="radio" name="north" value="true"> Norte verdadero</label>
+    </div>
+    <div id="decl" class="muted small"></div>
+
+    <div class="card rows">
+      <div><span>Señal ahora (RSRP)</span><b id="cRsrp">--</b></div>
+      <div><span>Mejor señal del barrido</span><b id="best">--</b></div>
+    </div>
+
+    <h2>Rumbo objetivo</h2>
+    <div class="row">
+      <input id="tin" type="number" inputmode="numeric" min="0" max="359" placeholder="0–359°">
+      <button id="tset">Fijar</button>
+      <button id="tnow">Usar rumbo actual</button>
+    </div>
+    <div class="btns">
+      <button id="tbest">Ir al rumbo de mejor señal</button>
+      <button id="tclr">Limpiar objetivo y barrido</button>
+    </div>
+    <p class="muted small">Gira despacio la antena (o tú mismo) 360° y observa dónde sube el RSRP; la app recuerda la mejor lectura por cada 10°.</p>
+  </section>
+
+  <!-- ============ GLOSARIO ============ -->
+  <section id="tab-ayuda" class="tab">
+    <h2>Glosario técnico</h2>
+    <details open><summary>RSRP (dBm)</summary><p>Potencia de la señal de referencia en 4G/5G. Es el mejor indicador de “cuánta señal” hay. Va de -140 (nada) a -44 (altísima). Más cerca de 0 es mejor: -80 o más es excelente; -110 o menos es muy mala.</p></details>
+    <details><summary>SINR (dB)</summary><p>Relación señal/ruido e interferencia. Dice qué tan limpia es la señal. Más de 20 dB es excelente, 13–20 buena, 0–13 regular y por debajo de 0 el enlace se vuelve inestable aunque el RSRP sea alto.</p></details>
+    <details><summary>RSRQ (dB)</summary><p>Calidad de la señal de referencia: combina potencia y ocupación de la celda. Entre -3 y -9 es muy buena; peor que -15 indica celda saturada o interferencia.</p></details>
+    <details><summary>dBm</summary><p>Unidad logarítmica de potencia. Siempre es negativa en señal móvil: -70 es mucho mejor que -100. Cada 3 dB equivale a duplicar o dividir la potencia.</p></details>
+    <details><summary>Registro de red</summary><p>Estado de tu teléfono frente a la red. <b>En servicio</b>: registrado y con cobertura. <b>Sin servicio</b>: no hay red a la que conectarse. <b>Solo emergencias</b>: únicamente llamadas de emergencia. <b>Radio apagada</b>: modo avión o radio desactivada.</p></details>
+    <details><summary>Caída</summary><p>Periodo en que la app detecta pérdida de comunicación: modo avión, sin servicio, solo emergencias, radio apagada o sin ninguna conexión de datos activa (ni móvil ni Wi‑Fi). Se confirma tras 2 lecturas seguidas y se guarda con inicio, fin, duración y ubicación.</p></details>
+    <details><summary>Tipo de red (2G/3G/4G/5G)</summary><p>Generación de la tecnología móvil. 4G LTE y 5G dan datos rápidos; 3G y 2G son lentas. Si el teléfono baja de 4G a 3G/2G, suele ser señal débil.</p></details>
+    <details><summary>Mapa de calor offline</summary><p>Dibuja tus puntos guardados con colores según la calidad de señal, sin necesitar internet ni mapas. Las zonas rojas son tus puntos débiles; las X rojas son caídas.</p></details>
+    <details><summary>Rumbo / azimut</summary><p>Ángulo en grados hacia donde apunta algo, medido desde el norte en sentido horario: 0° norte, 90° este, 180° sur, 270° oeste.</p></details>
+    <details><summary>Norte magnético vs. verdadero</summary><p>La brújula marca el norte magnético. El norte verdadero (geográfico) difiere según tu ubicación (declinación). Usa el verdadero si tu rumbo viene de un mapa; el magnético si orientas por brújula.</p></details>
+    <details><summary>Antena direccional</summary><p>Antena que concentra la señal en una dirección. Apúntala hacia la torre del operador y afina el rumbo mirando el RSRP y el SINR hasta encontrar el máximo.</p></details>
+
+    <h2>Colores de calidad</h2>
+    <div class="legend" id="legend2"></div>
+    <p class="muted small">Calidad = el peor valor entre RSRP y SINR. Sin 4G/5G se usa la potencia (dBm) o el nivel de Android.</p>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="senal" class="on">Señal</button>
+  <button data-tab="mapa">Mapa</button>
+  <button data-tab="brujula">Brújula</button>
+  <button data-tab="ayuda">Glosario</button>
+</nav>
+<div id="toast"></div>
+<script src="js/app.js"></script>
 </body>
 </html>

@@ -1,80 +1,95 @@
 package com.antenalibre.app;
 
-import android.Manifest;
-import android.content.pm.PackageManager;
-import android.os.Build;
+import android.content.Intent;
+import android.net.Uri;
 import android.os.Bundle;
-import android.webkit.GeolocationPermissions;
-import android.webkit.WebChromeClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import androidx.activity.OnBackPressedCallback;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
-import java.util.ArrayList;
-import java.util.List;
+import androidx.webkit.WebViewAssetLoader;
 
 public class MainActivity extends AppCompatActivity {
-    private static final int PERM_REQ_CODE = 101;
-    private WebView webView;
+  private static final String HOST = "appassets.androidplatform.net";
+  private WebView web;
+  private AntenaBridge bridge;
 
-    @Override
-    protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+  @Override
+  protected void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
+    setContentView(R.layout.activity_main);
+    web = findViewById(R.id.webview);
+    bridge = new AntenaBridge(this);
 
-        requestNeededPermissions();
+    final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
+        .setDomain(HOST)
+        .addPathHandler("/assets/", new WebViewAssetLoader.AssetsPathHandler(this))
+        .build();
 
-        webView = findViewById(R.id.webView);
-        WebSettings ws = webView.getSettings();
-        ws.setJavaScriptEnabled(true);
-        ws.setDomStorageEnabled(true);
-        ws.setDatabaseEnabled(true);
-        ws.setAllowFileAccess(true);
-        ws.setGeolocationEnabled(true);
-        ws.setMediaPlaybackRequiresUserGesture(false);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-            ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
-        }
+    WebSettings s = web.getSettings();
+    s.setJavaScriptEnabled(true);
+    s.setDomStorageEnabled(true);
+    s.setAllowFileAccess(false);
+    s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+    web.addJavascriptInterface(bridge, "Android");
 
-        webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient() {
-            @Override
-            public void onGeolocationPermissionsShowPrompt(String origin, GeolocationPermissions.Callback callback) {
-                callback.invoke(origin, true, false);
-            }
-        });
+    web.setWebViewClient(new WebViewClient() {
+      @Override
+      public WebResourceResponse shouldInterceptRequest(WebView v, WebResourceRequest r) {
+        return loader.shouldInterceptRequest(r.getUrl());
+      }
 
-        webView.addJavascriptInterface(new AntenaBridge(this), "AntenaBridge");
-        webView.loadUrl("file:///android_asset/web/index.html");
-    }
+      @Override
+      public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest r) {
+        Uri u = r.getUrl();
+        if (HOST.equals(u.getHost())) return false;
+        startActivity(new Intent(Intent.ACTION_VIEW, u));
+        return true;
+      }
+    });
 
-    @Override
-    public void onBackPressed() {
-        if (webView != null && webView.canGoBack()) {
-            webView.goBack();
+    getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
+      @Override
+      public void handleOnBackPressed() {
+        if (web.canGoBack()) {
+          web.goBack();
         } else {
-            super.onBackPressed();
+          setEnabled(false);
+          getOnBackPressedDispatcher().onBackPressed();
         }
-    }
+      }
+    });
 
-    private void requestNeededPermissions() {
-        String[] perms = new String[] {
-            Manifest.permission.ACCESS_FINE_LOCATION,
-            Manifest.permission.ACCESS_COARSE_LOCATION,
-            Manifest.permission.ACCESS_WIFI_STATE,
-            Manifest.permission.CHANGE_WIFI_STATE,
-            Manifest.permission.READ_PHONE_STATE
-        };
-        List<String> missing = new ArrayList<>();
-        for (String p : perms) {
-            if (ContextCompat.checkSelfPermission(this, p) != PackageManager.PERMISSION_GRANTED) {
-                missing.add(p);
-            }
-        }
-        if (!missing.isEmpty()) {
-            ActivityCompat.requestPermissions(this, missing.toArray(new String[0]), PERM_REQ_CODE);
-        }
-    }
+    if (savedInstanceState != null) web.restoreState(savedInstanceState);
+    else web.loadUrl("https://" + HOST + "/assets/web/index.html");
+
+    if (!bridge.hasAllPermissions()) bridge.askPermissions();
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    bridge.start();
+  }
+
+  @Override
+  protected void onPause() {
+    bridge.stop();
+    super.onPause();
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+    super.onRequestPermissionsResult(code, perms, results);
+    bridge.start();
+  }
+
+  @Override
+  protected void onSaveInstanceState(Bundle out) {
+    super.onSaveInstanceState(out);
+    web.saveState(out);
+  }
 }
