@@ -20,7 +20,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); m
   padding: 12px 14px; background: #0b121c; border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 50;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
-.brand-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent); }
+.brand-dot { width: 11px; height: 11px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 12px var(--accent); }
 .topbar h1 { margin: 0; font-size: 1.05rem; letter-spacing: 0.6px; }
 .ver-tag { font-size: 0.72rem; background: rgba(16, 185, 129, 0.16); color: var(--accent); border: 1px solid rgba(16, 185, 129, 0.4); padding: 1px 6px; border-radius: 999px; vertical-align: middle; }
 .topbar small { color: var(--muted); font-size: 0.72rem; display: block; }
@@ -31,7 +31,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); m
   flex: 1; min-width: 82px; padding: 11px 8px; background: none; border: none;
   color: var(--muted); font-size: 0.78rem; font-weight: 700; cursor: pointer; border-bottom: 2px solid transparent;
 }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); background: rgba(16, 185, 129, 0.06); }
+.tab.active { color: var(--accent); border-bottom-color: var(--accent); background: rgba(16, 185, 129, 0.08); }
 
 .tab-content { display: none; padding: 12px; max-width: 960px; margin: 0 auto; }
 .tab-content.active { display: block; }
@@ -54,6 +54,8 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); m
 .metric-title { font-size: 0.78rem; color: var(--muted); padding-right: 64px; }
 .metric-val { font-size: 1.38rem; font-weight: 800; margin: 6px 0 2px; color: var(--text); }
 .metric-sub { font-size: 0.76rem; color: var(--muted); }
+.sig-meter { width: 100%; height: 7px; background: var(--surface-2); border-radius: 999px; overflow: hidden; margin-top: 8px; }
+.sig-fill { height: 100%; width: 55%; background: linear-gradient(90deg, var(--danger), var(--warn), var(--accent)); transition: width 0.3s ease; }
 
 .advisor-header { display: flex; justify-content: space-between; align-items: center; }
 .pill { background: rgba(56, 189, 248, 0.15); color: var(--accent-2); border: 1px solid rgba(56, 189, 248, 0.35); padding: 2px 8px; border-radius: 999px; font-size: 0.72rem; font-weight: 700; }
@@ -74,7 +76,7 @@ html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); m
 .map-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
 .badge-dist { background: rgba(245, 158, 11, 0.16); color: var(--warn); border: 1px solid rgba(245, 158, 11, 0.4); padding: 4px 9px; border-radius: 999px; font-size: 0.8rem; font-weight: 800; }
 .map-canvas { width: 100%; height: 270px; border-radius: 10px; border: 1px solid var(--border); background: #0b131e; }
-.map-legend { display: flex; gap: 14px; font-size: 0.76rem; color: var(--muted); margin-top: 8px; }
+.map-legend { display: flex; gap: 14px; font-size: 0.76rem; color: var(--muted); margin-top: 8px; flex-wrap: wrap; }
 .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; }
 .dot.green { background: var(--accent); }
 .dot.amber { background: var(--warn); }

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Antena Libre v1.0 · RF, Torres, Planos y Coaxial</title>
+  <title>Antena Libre v1.4 · RF, Torres, Planos y Coaxial</title>
   <link rel="stylesheet" href="css/app.css" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 </head>
@@ -12,7 +12,7 @@
     <div class="brand">
       <span class="brand-dot"></span>
       <div>
-        <h1>ANTENA LIBRE <span class="ver-tag">v1.0</span></h1>
+        <h1>ANTENA LIBRE <span class="ver-tag">v1.4</span></h1>
         <small id="statusBanner">Pública · Global (Incl. Cuba) · Offline-Ready</small>
       </div>
     </div>
@@ -29,60 +29,42 @@
     <button class="tab" data-tab="diag">Test y Historial</button>
   </nav>
 
-  <!-- TAB 1: SEÑAL, RECOMENDADOR DE FRECUENCIA Y MAPA -->
   <main id="tab-panel" class="tab-content active">
     <p class="hint">Mantén presionada cualquier tarjeta <strong>3 segundos</strong> para ver qué significa, por qué ocurre y cómo mejorar el número.</p>
-
     <section class="grid-metrics">
       <div class="card lp-card" data-metric="rsrp">
-        <div class="lp-progress"></div>
-        <span class="lp-label">3s guía</span>
+        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
         <div class="metric-title">Señal (RSRP/RSSI)</div>
         <div id="mSignal" class="metric-val">-- dBm</div>
         <div id="mSignalSub" class="metric-sub">Calculando...</div>
+        <div class="sig-meter"><div id="sigMeterFill" class="sig-fill"></div></div>
       </div>
-
       <div class="card lp-card" data-metric="sinr">
-        <div class="lp-progress"></div>
-        <span class="lp-label">3s guía</span>
+        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
         <div class="metric-title">Calidad / SINR</div>
         <div id="mSinr" class="metric-val">-- dB</div>
         <div id="mSinrSub" class="metric-sub">Relación señal/ruido</div>
       </div>
-
       <div class="card lp-card" data-metric="freq">
-        <div class="lp-progress"></div>
-        <span class="lp-label">3s guía</span>
+        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
         <div class="metric-title">Frecuencia Actual</div>
         <div id="mFreq" class="metric-val">-- MHz</div>
         <div id="mFreqSub" class="metric-sub">Banda / Canal</div>
       </div>
-
       <div class="card lp-card" data-metric="dist">
-        <div class="lp-progress"></div>
-        <span class="lp-label">3s guía</span>
+        <div class="lp-progress"></div><span class="lp-label">3s guía</span>
         <div class="metric-title">Antena y Distancia</div>
         <div id="mDist" class="metric-val">-- m</div>
         <div id="mDistSub" class="metric-sub">Estimación por enlace</div>
       </div>
     </section>
-
     <section class="card advisor-card lp-card" data-metric="advisor">
       <div class="lp-progress"></div>
-      <div class="advisor-header">
-        <h2>Frecuencia Conectada vs. Recomendada</h2>
-        <span class="pill" id="linkModePill">AUTO</span>
-      </div>
+      <div class="advisor-header"><h2>Frecuencia Conectada vs. Recomendada</h2><span class="pill" id="linkModePill">AUTO</span></div>
       <div class="freq-compare">
-        <div class="freq-box">
-          <span>Conectado ahora</span>
-          <strong id="freqNow">--</strong>
-        </div>
+        <div class="freq-box"><span>Conectado ahora</span><strong id="freqNow">--</strong></div>
         <div class="freq-arrow">➜</div>
-        <div class="freq-box best">
-          <span>Debes conectarte a</span>
-          <strong id="freqBest">--</strong>
-        </div>
+        <div class="freq-box best"><span>Debes conectarte a</span><strong id="freqBest">--</strong></div>
       </div>
       <p id="freqGuideText" class="body-copy"></p>
       <div class="btn-row">
@@ -90,146 +72,62 @@
         <button id="btnWifiScan" class="btn-secondary">Escanear Wi-Fi</button>
       </div>
     </section>
-
-    <section class="card coach-card">
-      <h2>Asesor Activo de Mejora</h2>
-      <p id="coachAdvice" class="body-copy"></p>
-    </section>
-
+    <section class="card coach-card"><h2>Asesor Activo de Mejora</h2><p id="coachAdvice" class="body-copy"></p></section>
     <section class="card map-card lp-card" data-metric="map">
       <div class="lp-progress"></div>
-      <div class="map-top">
-        <div>
-          <h2>Mapa Local · Tu Posición y Antena</h2>
-          <small id="mapCoords">GPS: esperando ubicación...</small>
-        </div>
-        <span id="mapDistanceBadge" class="badge-dist">-- m</span>
-      </div>
+      <div class="map-top"><div><h2>Mapa Local · Tu Posición y Antena</h2><small id="mapCoords">GPS: esperando ubicación...</small></div><span id="mapDistanceBadge" class="badge-dist">-- m</span></div>
       <div id="leafletMap" class="map-canvas"></div>
       <canvas id="fallbackMapCanvas" class="map-canvas hidden" width="640" height="340"></canvas>
-      <div class="map-legend">
-        <span><i class="dot green"></i> Tú</span>
-        <span><i class="dot amber"></i> Antena estimada</span>
-        <span><i class="dot cyan"></i> Trayectoria y distancia</span>
-      </div>
+      <div class="map-legend"><span><i class="dot green"></i> Tú</span><span><i class="dot amber"></i> Antena estimada</span><span><i class="dot cyan"></i> Trayectoria</span></div>
     </section>
   </main>
 
-  <!-- TAB 2: SELECTOR DE BANDAS LTE / 5G NR / UMTS / GSM + REDES -->
   <main id="tab-bands" class="tab-content">
     <section class="card">
-      <h2>Selector de Banda / Frecuencia (Sin Escritura Manual)</h2>
-      <p class="body-copy">Elige tecnología y banda desde los selectores para calcular al instante longitud de onda, medidas de antena, pérdida en espacio libre y abrir los ajustes de red del teléfono.</p>
+      <h2>Selector de Banda / Frecuencia</h2>
       <div class="controls-row">
-        <label>
-          Tecnología de red
-          <select id="bandTechSelect" class="input-ctrl">
-            <option value="LTE">4G LTE (B28, B20, B8, B3, B1, B7, B41)</option>
-            <option value="NR">5G NR (n28, n41, n78, n258)</option>
-            <option value="UMTS">3G UMTS / WCDMA (B5, B8, B1)</option>
-            <option value="GSM">2G GSM (850, 900, 1800, 1900)</option>
-            <option value="WIFI">Wi-Fi ISM (2.4 GHz Ch1-11, 5 GHz Ch36-149)</option>
-          </select>
-        </label>
-        <label>
-          Banda o Canal
-          <select id="bandItemSelect" class="input-ctrl"></select>
-        </label>
-        <label>
-          Objetivo de enlace
-          <select id="bandGoalSelect" class="input-ctrl">
-            <option value="range">Máximo alcance y atravesar muros</option>
-            <option value="speed">Mayor velocidad en línea de vista</option>
-            <option value="balance">Equilibrio alcance / capacidad</option>
-          </select>
-        </label>
+        <label>Tecnología <select id="bandTechSelect" class="input-ctrl"><option value="LTE">4G LTE</option><option value="NR">5G NR</option><option value="UMTS">3G UMTS</option><option value="GSM">2G GSM</option><option value="WIFI">Wi-Fi</option></select></label>
+        <label>Banda / Canal <select id="bandItemSelect" class="input-ctrl"></select></label>
+        <label>Objetivo <select id="bandGoalSelect" class="input-ctrl"><option value="range">Alcance y muros</option><option value="speed">Velocidad</option><option value="balance">Equilibrio</option></select></label>
       </div>
       <div id="bandDetailsBox" class="info-box"></div>
-      <div class="btn-row">
-        <button id="btnApplyBandToCalc" class="btn-primary">Enviar Frecuencia a Planos y Cables</button>
-        <button id="btnOpenBandSettings" class="btn-secondary">Abrir Ajustes de Red Android</button>
-      </div>
-      <p class="body-copy note-small">Nota técnica Android: en equipos Android estándar sin privilegios de operador o firma del sistema, el cambio de banda celular se realiza desde los ajustes de red del dispositivo o con el asesor de posición/banda; esta app te lleva directo a ajustes y calcula la banda óptima.</p>
+      <div class="btn-row"><button id="btnApplyBandToCalc" class="btn-primary">Enviar a Planos y Cables</button><button id="btnOpenBandSettings" class="btn-secondary">Ajustes de Red</button></div>
     </section>
-
-    <section class="card">
-      <h2>Redes Wi-Fi y Celdas Detectadas</h2>
-      <div id="scanResultsList" class="list-stack"></div>
-    </section>
+    <section class="card"><h2>Celdas y Redes Detectadas</h2><div id="scanResultsList" class="list-stack"></div></section>
   </main>
 
-  <!-- TAB 3: PLANOS REALES DE ANTENAS, MEDIDAS, MATERIALES Y CABLES -->
   <main id="tab-antenas" class="tab-content">
     <section class="card">
-      <h2>Calculadora de Medidas, Cable Coaxial y Pérdidas</h2>
-      <p class="body-copy">Ajusta la <strong>frecuencia (MHz)</strong>, el <strong>largo del cable (m)</strong> y el <strong>tipo de cable coaxial</strong> para ver medidas reales en milímetros/centímetros, pérdida en dB y cuánto reduce un cable largo la señal útil.</p>
+      <h2>Calculadora de Medidas, Cable y Cuna sin Conector</h2>
       <div class="calc-grid">
-        <label>
-          Frecuencia (MHz)
-          <input id="calcFreq" type="number" class="input-ctrl" value="2412" min="50" max="28000" step="1" />
-        </label>
-        <label>
-          Largo del cable (m)
-          <input id="calcCableLen" type="number" class="input-ctrl" value="6" min="0.1" max="100" step="0.5" />
-        </label>
-        <label>
-          Cable coaxial
-          <select id="calcCableType" class="input-ctrl">
-            <option value="RG58">RG-58 (50 Ω · VF 0.66 · alta pérdida)</option>
-            <option value="RG6">RG-6 Quad (75 Ω · VF 0.82 · pérdida media)</option>
-            <option value="LMR200">LMR-200 (50 Ω · VF 0.83 · baja pérdida)</option>
-            <option value="LMR400">LMR-400 (50 Ω · VF 0.85 · muy baja pérdida)</option>
-          </select>
-        </label>
-        <label>
-          Distancia objetivo (m)
-          <input id="calcDist" type="number" class="input-ctrl" value="800" min="10" max="50000" step="50" />
-        </label>
+        <label>Frecuencia (MHz) <input id="calcFreq" type="number" class="input-ctrl" value="2412" min="50" max="28000" /></label>
+        <label>Cable coaxial (m) <input id="calcCableLen" type="number" class="input-ctrl" value="5" min="0.1" max="100" step="0.5" /></label>
+        <label>Tipo de cable <select id="calcCableType" class="input-ctrl"><option value="RG58">RG-58 (50 Ω)</option><option value="RG6">RG-6 Quad (75 Ω)</option><option value="LMR200">LMR-200 (50 Ω)</option><option value="LMR400">LMR-400 (50 Ω)</option></select></label>
+        <label>Distancia (m) <input id="calcDist" type="number" class="input-ctrl" value="800" min="10" max="50000" step="50" /></label>
       </div>
       <div id="cablePhysicsBox" class="info-box"></div>
     </section>
-
     <div id="antennaPlansContainer" class="list-stack"></div>
   </main>
 
-  <!-- TAB 4: TEST DE PING/VELOCIDAD E HISTORIAL -->
   <main id="tab-diag" class="tab-content">
     <section class="card">
-      <h2>Prueba de Velocidad, Latencia (Ping) e Historial</h2>
-      <p class="body-copy">Mide latencia y rendimiento aproximado desde tu conexión actual y guarda el registro de muestras en el dispositivo.</p>
-      <div class="btn-row">
-        <button id="btnRunSpeed" class="btn-primary">Iniciar Test de Ping y Velocidad</button>
-        <button id="btnClearHistory" class="btn-secondary">Limpiar Historial</button>
-      </div>
-      <div class="grid-metrics speed-grid">
-        <div class="mini-stat">
-          <span>Ping / Latencia</span>
-          <strong id="statPing">-- ms</strong>
-        </div>
-        <div class="mini-stat">
-          <span>Descarga aprox.</span>
-          <strong id="statDown">-- Mbps</strong>
-        </div>
-      </div>
+      <h2>Test de Ping, Velocidad e Historial</h2>
+      <div class="btn-row"><button id="btnRunSpeed" class="btn-primary">Iniciar Test</button><button id="btnClearHistory" class="btn-secondary">Limpiar Historial</button></div>
+      <div class="grid-metrics speed-grid"><div class="mini-stat"><span>Ping</span><strong id="statPing">-- ms</strong></div><div class="mini-stat"><span>Descarga aprox.</span><strong id="statDown">-- Mbps</strong></div></div>
       <canvas id="historyCanvas" class="history-canvas" width="640" height="180"></canvas>
       <div id="historyList" class="history-list"></div>
     </section>
   </main>
 
-  <!-- MODAL EXPLICATIVO (LONG PRESS > 3s) -->
   <div id="guideModal" class="modal hidden" role="dialog" aria-modal="true">
     <div class="modal-box">
-      <div class="modal-head">
-        <h3 id="modalTitle">Guía de Señal</h3>
-        <button id="btnCloseModal" class="btn-close">✕</button>
-      </div>
+      <div class="modal-head"><h3 id="modalTitle">Guía de Señal</h3><button id="btnCloseModal" class="btn-close">✕</button></div>
       <p id="modalWhat" class="body-copy"></p>
-      <h4>Por qué ocurre y cómo mejorar este valor:</h4>
-      <ul id="modalSteps" class="steps-list"></ul>
+      <h4>Cómo mejorar este valor:</h4><ul id="modalSteps" class="steps-list"></ul>
       <button id="btnModalOk" class="btn-primary full-btn">Entendido</button>
     </div>
   </div>
-
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <script src="js/app.js"></script>
 </body>

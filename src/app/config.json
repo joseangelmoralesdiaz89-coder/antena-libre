@@ -1,9 +1,13 @@
 {
   "appName": "Antena Libre",
-  "version": "1.0.0-ultimate",
+  "version": "1.4.0-pro-rf",
   "publicAccess": true,
   "supportedCountries": "ALL_INCLUDING_CUBA",
   "offlineFallback": true,
   "longPressMs": 3000,
-  "defaultLanguage": "es"
+  "defaultLanguage": "es",
+  "includesCouplerBaseMode": true,
+  "couplerLossEstimateDb": 8.5,
+  "includesPlacementCalibration": true,
+  "liveSignalRadar": true
 }

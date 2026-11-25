@@ -33,6 +33,7 @@ public class MainActivity extends AppCompatActivity {
         ws.setDatabaseEnabled(true);
         ws.setAllowFileAccess(true);
         ws.setGeolocationEnabled(true);
+        ws.setMediaPlaybackRequiresUserGesture(false);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             ws.setMixedContentMode(WebSettings.MIXED_CONTENT_ALWAYS_ALLOW);
         }
@@ -47,6 +48,15 @@ public class MainActivity extends AppCompatActivity {
 
         webView.addJavascriptInterface(new AntenaBridge(this), "AntenaBridge");
         webView.loadUrl("file:///android_asset/web/index.html");
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (webView != null && webView.canGoBack()) {
+            webView.goBack();
+        } else {
+            super.onBackPressed();
+        }
     }
 
     private void requestNeededPermissions() {
