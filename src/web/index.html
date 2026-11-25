@@ -1,106 +1,35 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>Antena Libre</title>
-  <link rel="stylesheet" href="css/app.css" />
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Antena Libre</title>
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <header class="top">
-    <div>
-      <h1>ANTENA LIBRE <span class="badge">v0.3</span></h1>
-      <small>Antena de apoyo en tablita · Sin conector al teléfono</small>
-    </div>
-    <button id="btnRefresh" class="btn">Medir</button>
-  </header>
-
-  <nav class="tabs">
-    <button class="tab active" data-v="align">Alineación</button>
-    <button class="tab" data-v="plans">Planos y Fotos</button>
-    <button class="tab" data-v="bands">Bandas y Red</button>
-  </nav>
-
-  <section id="v-align" class="view active">
-    <div class="grid2">
-      <div class="kpi">
-        <span>Señal actual</span>
-        <strong id="kDbm">-- dBm</strong>
-        <small id="kQual">Esperando lectura...</small>
-        <div class="bar"><div id="kBar"></div></div>
-      </div>
-      <div class="kpi">
-        <span>Mejor punto en tablita</span>
-        <strong id="kBest">-- dBm</strong>
-        <small id="kBestPos">Sin guardar aún</small>
-      </div>
-    </div>
-
-    <div class="card">
-      <h2>Alineación del Teléfono sobre la Tablita</h2>
-      <p class="p">Apoya el celular encima de la tablita (sin enchufar cable). Pulsa <strong>Iniciar alineación del teléfono</strong> y gira/mueve el teléfono sobre la tablita (o desliza el dedo en el dibujo) hasta encontrar la mayor señal.</p>
-      <div class="row">
-        <button id="btnStart" class="btn">Iniciar alineación del teléfono</button>
-        <button id="btnStop" class="btn2">Detener</button>
-        <button id="btnSavePeak" class="btn2">Guardar mejor punto</button>
-      </div>
-      <div class="stage">
-        <canvas id="board" class="board" width="600" height="260"></canvas>
-        <div class="hud">
-          <div><span>Giro teléfono</span><strong id="hAng">0°</strong></div>
-          <div><span>Posición X / Y</span><strong id="hPos">0 / 0 mm</strong></div>
-          <div><span>Estado</span><strong id="hState">Listo</strong></div>
-        </div>
-        <div class="sliders">
-          <label>Girar teléfono manual (0°–360°)
-            <input id="rngAngle" type="range" min="0" max="360" value="0" />
-          </label>
-          <label>Desplazar izquierda / derecha (mm)
-            <input id="rngX" type="range" min="-45" max="45" value="0" />
-          </label>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="v-plans" class="view">
-    <div class="card">
-      <h2>Calculadora Fácil de Medidas y Cable</h2>
-      <div class="sliders">
-        <label>Frecuencia (MHz)
-          <input id="inFreq" type="number" class="ctrl" value="1842" min="50" max="6000" />
-        </label>
-        <label>Largo del cable coaxial (m)
-          <input id="inLen" type="number" class="ctrl" value="3" min="0.5" max="50" step="0.5" />
-        </label>
-      </div>
-      <div id="calcOut" class="box"></div>
-    </div>
-    <div id="plansList" class="stack"></div>
-  </section>
-
-  <section id="v-bands" class="view">
-    <div class="card">
-      <h2>Banda de Trabajo y Redes Detectadas</h2>
-      <label>Selecciona tu banda principal
-        <select id="selBand" class="ctrl">
-          <option value="758">4G Banda 28 (700 MHz · Máximo alcance y paredes)</option>
-          <option value="806">4G Banda 20 (800 MHz · Buena cobertura interior)</option>
-          <option value="942">4G/3G Banda 8 (900 MHz · Zona rural / abierta)</option>
-          <option value="1842" selected>4G Banda 3 (1800 MHz · Equilibrio alcance/velocidad)</option>
-          <option value="2140">4G/3G Banda 1 (2100 MHz · Alta capacidad)</option>
-          <option value="2655">4G Banda 7 (2600 MHz · Alta velocidad cerca)</option>
-          <option value="3500">5G Banda n78 (3500 MHz · Ultra velocidad)</option>
-          <option value="2437">Wi-Fi 2.4 GHz (2437 MHz · Alcance amplio)</option>
-        </select>
-      </label>
-      <div class="row">
-        <button id="btnNetSettings" class="btn2">Abrir Ajustes de Red del Teléfono</button>
-      </div>
-      <div id="netList" class="stack" style="margin-top:10px;"></div>
-    </div>
-  </section>
-
-  <script src="js/app.js"></script>
+<header><h1>Antena Libre</h1><span id="chip" class="chip">…</span></header>
+<main>
+  <section id="v-senal" class="tab active"></section>
+  <section id="v-mapa" class="tab"></section>
+  <section id="v-brujula" class="tab"></section>
+  <section id="v-antenas" class="tab"></section>
+  <section id="v-mas" class="tab"></section>
+</main>
+<nav>
+  <button data-act="tab" data-tab="senal" class="on">Señal</button>
+  <button data-act="tab" data-tab="mapa">Mapa</button>
+  <button data-act="tab" data-tab="brujula">Brújula</button>
+  <button data-act="tab" data-tab="antenas">Antenas</button>
+  <button data-act="tab" data-tab="mas">Más</button>
+</nav>
+<div id="sheet"><div class="sh-c"></div></div>
+<div id="toast"></div>
+<script src="vendor/leaflet.js"></script>
+<script src="js/core.js"></script>
+<script src="js/content.js"></script>
+<script src="js/app.js"></script>
+<script src="js/app2.js"></script>
 </body>
 </html>

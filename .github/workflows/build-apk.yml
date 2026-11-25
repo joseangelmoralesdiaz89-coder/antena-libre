@@ -1,24 +1,59 @@
-name: Build Antena Libre APK
+name: Build APK
 on:
-  workflow_dispatch:
   push:
-    branches: [ main ]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "17"
-      - uses: android-actions/setup-android@v3
-      - name: Install Gradle & Build APK
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+      - name: Preparar assets (web + Leaflet)
         run: |
-          sudo apt-get update && sudo apt-get install -y gradle
-          cd android
-          gradle assembleDebug --no-daemon --stacktrace
+          test -f src/web/index.html
+          A=android/app/src/main/assets
+          rm -rf $A && mkdir -p $A/web/vendor $A/app
+          cp -r src/web/. $A/web/
+          cp -r src/app/. $A/app/ 2>/dev/null || true
+          for f in leaflet.js leaflet.css; do
+            curl -fsSL "https://unpkg.com/leaflet@1.9.4/dist/$f" -o "$A/web/vendor/$f" || curl -fsSL "https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/$f" -o "$A/web/vendor/$f"
+          done
+      - name: Llave de firma (secreto privado)
+        env:
+          KS: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS" ]; then
+            echo "$KS" | base64 -d > "$RUNNER_TEMP/release.p12"
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/release.p12" >> "$GITHUB_ENV"
+            echo "Firmando con la llave privada"
+          else
+            echo "SIN llave: se firmará con llave de depuración"
+          fi
+      - name: Compilar APK
+        working-directory: android
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+        run: gradle assembleRelease --no-daemon --stacktrace
+      - name: Preparar APK
+        run: cp android/app/build/outputs/apk/release/app-release.apk AntenaLibre.apk
       - uses: actions/upload-artifact@v4
         with:
-          name: antena-libre-v03-apk
-          path: android/app/build/outputs/apk/debug/*.apk
+          name: antena-libre-apk
+          path: AntenaLibre.apk
+      - name: Publicar release latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          SUM=$(sha256sum AntenaLibre.apk | cut -d' ' -f1)
+          gh release delete latest --cleanup-tag -y || true
+          gh release create latest AntenaLibre.apk --title "Antena Libre (ultimo build)" --notes "Build ${GITHUB_SHA::7} - SHA-256: $SUM" --target "$GITHUB_SHA"

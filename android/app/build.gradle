@@ -1,35 +1,39 @@
-plugins {
-    id 'com.android.application'
-}
-
+plugins { id 'com.android.application' }
+def ksPath = System.getenv('KEYSTORE_PATH')
 android {
-    namespace 'com.antenalibre.app'
-    compileSdk 34
-
-    defaultConfig {
-        applicationId "com.antenalibre.app"
-        minSdk 24
-        targetSdk 34
-        versionCode 3
-        versionName "0.3.0"
+  namespace 'com.antenalibre.app'
+  compileSdk 34
+  defaultConfig {
+    applicationId 'com.antenalibre.app'
+    minSdk 24
+    targetSdk 34
+    versionCode 3
+    versionName '0.3.0'
+  }
+  signingConfigs {
+    release {
+      if (ksPath) {
+        storeFile file(ksPath)
+        storePassword System.getenv('KEYSTORE_PASS')
+        keyAlias 'antena'
+        keyPassword System.getenv('KEYSTORE_PASS')
+        storeType 'pkcs12'
+      }
     }
-
-    buildTypes {
-        release {
-            minifyEnabled false
-        }
-        debug {
-            debuggable true
-        }
+  }
+  buildTypes {
+    release {
+      minifyEnabled false
+      signingConfig ksPath ? signingConfigs.release : signingConfigs.debug
     }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
-    }
+  }
+  lint { checkReleaseBuilds false; abortOnError false }
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
+  }
 }
-
 dependencies {
-    implementation 'androidx.appcompat:appcompat:1.6.1'
-    implementation 'androidx.webkit:webkit:1.10.0'
+  implementation 'androidx.appcompat:appcompat:1.6.1'
+  implementation 'androidx.webkit:webkit:1.10.0'
 }
