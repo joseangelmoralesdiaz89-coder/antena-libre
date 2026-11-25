@@ -15,12 +15,14 @@ import androidx.webkit.WebViewAssetLoader;
 public class MainActivity extends AppCompatActivity {
   private static final String HOST = "appassets.androidplatform.net";
   private WebView web;
+  private AntenaBridge bridge;
 
   @Override
   protected void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
     setContentView(R.layout.activity_main);
     web = findViewById(R.id.webview);
+    bridge = new AntenaBridge(this);
 
     final WebViewAssetLoader loader = new WebViewAssetLoader.Builder()
         .setDomain(HOST)
@@ -32,6 +34,7 @@ public class MainActivity extends AppCompatActivity {
     s.setDomStorageEnabled(true);
     s.setAllowFileAccess(false);
     s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
+    web.addJavascriptInterface(bridge, "Android");
 
     web.setWebViewClient(new WebViewClient() {
       @Override
@@ -62,6 +65,26 @@ public class MainActivity extends AppCompatActivity {
 
     if (savedInstanceState != null) web.restoreState(savedInstanceState);
     else web.loadUrl("https://" + HOST + "/assets/web/index.html");
+
+    if (!bridge.hasAllPermissions()) bridge.askPermissions();
+  }
+
+  @Override
+  protected void onResume() {
+    super.onResume();
+    bridge.start();
+  }
+
+  @Override
+  protected void onPause() {
+    bridge.stop();
+    super.onPause();
+  }
+
+  @Override
+  public void onRequestPermissionsResult(int code, String[] perms, int[] results) {
+    super.onRequestPermissionsResult(code, perms, results);
+    bridge.start();
   }
 
   @Override

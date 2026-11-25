@@ -1,23 +1,165 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="es">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="theme-color" content="#111111" />
-  <link rel="manifest" href="./manifest.json" />
-  <title>Antena Libre</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Antena Libre</title>
+<link rel="stylesheet" href="css/app.css">
 </head>
 <body>
+<header>
   <h1>Antena Libre</h1>
-  <p id="status">Cargando configuración...</p>
-  <script>
-    fetch('../app/config.json')
-      .then(r => r.json())
-      .then(cfg => {
-        document.title = cfg.appName;
-        document.getElementById('status').textContent =
-          cfg.appName + ' (' + cfg.packageId + ') v' + cfg.version;
-      });
-  </script>
+  <span id="chip" class="chip">Sin datos</span>
+</header>
+
+<main>
+  <!-- ============ SEÑAL ============ -->
+  <section id="tab-senal" class="tab active">
+    <div id="banner" class="banner hidden"></div>
+
+    <div class="card hero">
+      <div id="qdot" class="qdot"></div>
+      <div>
+        <div id="qname" class="qname">--</div>
+        <div id="qsub" class="muted">Esperando datos…</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="big"><span id="rsrp">--</span><small> dBm · RSRP</small></div>
+      <div class="bar"><i id="barfill"></i></div>
+      <div class="scale"><span>-140</span><span>-110</span><span>-90</span><span>-80</span><span>-44</span></div>
+    </div>
+
+    <div class="grid">
+      <div class="m"><b id="sinr">--</b><span>SINR (dB)</span></div>
+      <div class="m"><b id="rsrq">--</b><span>RSRQ (dB)</span></div>
+      <div class="m"><b id="net">--</b><span>Red</span></div>
+      <div class="m"><b id="op">--</b><span>Operador</span></div>
+    </div>
+
+    <div class="card rows">
+      <div><span>Registro de red</span><b id="reg">--</b></div>
+      <div><span>Internet</span><b id="inet">--</b></div>
+      <div><span>Ubicación</span><b id="gps">--</b></div>
+      <div><span>Caídas (24 h)</span><b id="n24">0</b></div>
+      <div><span>Puntos guardados</span><b id="npts">0</b></div>
+    </div>
+
+    <div id="permbox" class="card warn hidden">
+      Faltan permisos (ubicación / teléfono) para leer la señal completa y guardar coordenadas.
+      <button id="btnPerm" class="primary">Conceder permisos</button>
+    </div>
+
+    <h2>Acción rápida de red</h2>
+    <div class="btns">
+      <button data-set="mobile">Datos móviles / roaming</button>
+      <button data-set="operator">Elegir operador</button>
+      <button data-set="panel">Panel de internet</button>
+      <button data-set="airplane">Modo avión</button>
+    </div>
+
+    <label class="chk"><input type="checkbox" id="awake"> Mantener pantalla encendida (monitoreo continuo)</label>
+    <p class="muted small">El registro de caídas y puntos funciona mientras la app está abierta.</p>
+  </section>
+
+  <!-- ============ MAPA ============ -->
+  <section id="tab-mapa" class="tab">
+    <div class="row">
+      <select id="filter">
+        <option value="all">Todos los puntos</option>
+        <option value="bad">Señal mala o peor</option>
+        <option value="out">Solo caídas</option>
+      </select>
+      <span id="mapinfo" class="muted small"></span>
+    </div>
+    <canvas id="map"></canvas>
+    <div id="hit" class="muted small">Toca un punto para ver sus detalles.</div>
+    <div class="legend" id="legend"></div>
+
+    <h2>Historial de caídas</h2>
+    <div id="outlist"></div>
+
+    <h2>Exportar datos</h2>
+    <div class="btns">
+      <button id="xCsvP">CSV de puntos</button>
+      <button id="xCsvC">CSV de caídas</button>
+      <button id="xJson">JSON completo</button>
+      <button id="xShare">Compartir JSON</button>
+    </div>
+    <p class="muted small">Los archivos se guardan en la carpeta Descargas.</p>
+    <button id="clear" class="danger">Borrar historial</button>
+  </section>
+
+  <!-- ============ BRÚJULA ============ -->
+  <section id="tab-brujula" class="tab">
+    <div class="compass">
+      <svg viewBox="0 -14 300 314" id="svg">
+        <polygon points="150,-12 141,6 159,6" fill="#ef4444"/>
+        <g id="dial">
+          <circle cx="150" cy="150" r="140" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+          <g id="ticks"></g>
+          <g id="tgt" class="hidden"><polygon points="150,2 141,20 159,20" fill="#f59e0b"/></g>
+        </g>
+        <circle cx="150" cy="150" r="4" fill="#94a3b8"/>
+      </svg>
+      <div class="readout"><span id="hdg">--</span><small id="card">--</small></div>
+    </div>
+    <div id="delta" class="delta">Mantén el teléfono plano y alejado de metales e imanes.</div>
+
+    <div class="row">
+      <label class="chk"><input type="radio" name="north" value="mag" checked> Norte magnético</label>
+      <label class="chk"><input type="radio" name="north" value="true"> Norte verdadero</label>
+    </div>
+    <div id="decl" class="muted small"></div>
+
+    <div class="card rows">
+      <div><span>Señal ahora (RSRP)</span><b id="cRsrp">--</b></div>
+      <div><span>Mejor señal del barrido</span><b id="best">--</b></div>
+    </div>
+
+    <h2>Rumbo objetivo</h2>
+    <div class="row">
+      <input id="tin" type="number" inputmode="numeric" min="0" max="359" placeholder="0–359°">
+      <button id="tset">Fijar</button>
+      <button id="tnow">Usar rumbo actual</button>
+    </div>
+    <div class="btns">
+      <button id="tbest">Ir al rumbo de mejor señal</button>
+      <button id="tclr">Limpiar objetivo y barrido</button>
+    </div>
+    <p class="muted small">Gira despacio la antena (o tú mismo) 360° y observa dónde sube el RSRP; la app recuerda la mejor lectura por cada 10°.</p>
+  </section>
+
+  <!-- ============ GLOSARIO ============ -->
+  <section id="tab-ayuda" class="tab">
+    <h2>Glosario técnico</h2>
+    <details open><summary>RSRP (dBm)</summary><p>Potencia de la señal de referencia en 4G/5G. Es el mejor indicador de “cuánta señal” hay. Va de -140 (nada) a -44 (altísima). Más cerca de 0 es mejor: -80 o más es excelente; -110 o menos es muy mala.</p></details>
+    <details><summary>SINR (dB)</summary><p>Relación señal/ruido e interferencia. Dice qué tan limpia es la señal. Más de 20 dB es excelente, 13–20 buena, 0–13 regular y por debajo de 0 el enlace se vuelve inestable aunque el RSRP sea alto.</p></details>
+    <details><summary>RSRQ (dB)</summary><p>Calidad de la señal de referencia: combina potencia y ocupación de la celda. Entre -3 y -9 es muy buena; peor que -15 indica celda saturada o interferencia.</p></details>
+    <details><summary>dBm</summary><p>Unidad logarítmica de potencia. Siempre es negativa en señal móvil: -70 es mucho mejor que -100. Cada 3 dB equivale a duplicar o dividir la potencia.</p></details>
+    <details><summary>Registro de red</summary><p>Estado de tu teléfono frente a la red. <b>En servicio</b>: registrado y con cobertura. <b>Sin servicio</b>: no hay red a la que conectarse. <b>Solo emergencias</b>: únicamente llamadas de emergencia. <b>Radio apagada</b>: modo avión o radio desactivada.</p></details>
+    <details><summary>Caída</summary><p>Periodo en que la app detecta pérdida de comunicación: modo avión, sin servicio, solo emergencias, radio apagada o sin ninguna conexión de datos activa (ni móvil ni Wi‑Fi). Se confirma tras 2 lecturas seguidas y se guarda con inicio, fin, duración y ubicación.</p></details>
+    <details><summary>Tipo de red (2G/3G/4G/5G)</summary><p>Generación de la tecnología móvil. 4G LTE y 5G dan datos rápidos; 3G y 2G son lentas. Si el teléfono baja de 4G a 3G/2G, suele ser señal débil.</p></details>
+    <details><summary>Mapa de calor offline</summary><p>Dibuja tus puntos guardados con colores según la calidad de señal, sin necesitar internet ni mapas. Las zonas rojas son tus puntos débiles; las X rojas son caídas.</p></details>
+    <details><summary>Rumbo / azimut</summary><p>Ángulo en grados hacia donde apunta algo, medido desde el norte en sentido horario: 0° norte, 90° este, 180° sur, 270° oeste.</p></details>
+    <details><summary>Norte magnético vs. verdadero</summary><p>La brújula marca el norte magnético. El norte verdadero (geográfico) difiere según tu ubicación (declinación). Usa el verdadero si tu rumbo viene de un mapa; el magnético si orientas por brújula.</p></details>
+    <details><summary>Antena direccional</summary><p>Antena que concentra la señal en una dirección. Apúntala hacia la torre del operador y afina el rumbo mirando el RSRP y el SINR hasta encontrar el máximo.</p></details>
+
+    <h2>Colores de calidad</h2>
+    <div class="legend" id="legend2"></div>
+    <p class="muted small">Calidad = el peor valor entre RSRP y SINR. Sin 4G/5G se usa la potencia (dBm) o el nivel de Android.</p>
+  </section>
+</main>
+
+<nav>
+  <button data-tab="senal" class="on">Señal</button>
+  <button data-tab="mapa">Mapa</button>
+  <button data-tab="brujula">Brújula</button>
+  <button data-tab="ayuda">Glosario</button>
+</nav>
+<div id="toast"></div>
+<script src="js/app.js"></script>
 </body>
 </html>
