@@ -1,21 +1,22 @@
 const LONG_PRESS_MS = 3000;
-const STORAGE_KEY = "antena_libre_history_v1";
+const STORAGE_KEY = "antena_libre_v1_history";
+const SPEED_OF_LIGHT_M_PER_SEC = 299.792458; // c / 1e6 -> metros por MHz
 
 const BAND_CATALOG = {
   LTE: [
-    { code: "B28 (700 MHz)", mhz: 758, role: "Máximo alcance y penetración en interiores / zonas rurales" },
-    { code: "B20 (800 MHz)", mhz: 806, role: "Cobertura amplia y penetración en muros" },
+    { code: "B28 (700 MHz)", mhz: 758, role: "Máximo alcance y penetración en muros / zonas rurales" },
+    { code: "B20 (800 MHz)", mhz: 806, role: "Cobertura amplia y buena penetración en interiores" },
     { code: "B8 (900 MHz)", mhz: 942, role: "Buen alcance con capacidad moderada" },
     { code: "B3 (1800 MHz)", mhz: 1842, role: "Equilibrio entre velocidad y cobertura urbana" },
     { code: "B1 (2100 MHz)", mhz: 2140, role: "Buena capacidad de datos en zonas pobladas" },
     { code: "B7 (2600 MHz)", mhz: 2655, role: "Alta velocidad a menor alcance y menor penetración" },
-    { code: "B41 (2500 MHz TDD)", mhz: 2595, role: "Alta capacidad TDD en áreas con línea de vista" }
+    { code: "B41 (2500 MHz TDD)", mhz: 2595, role: "Alta capacidad TDD con buena línea de vista" }
   ],
   NR: [
     { code: "n28 (700 MHz)", mhz: 773, role: "5G de largo alcance y cobertura profunda" },
-    { code: "n78 (3500 MHz C-Band)", mhz: 3500, role: "5G de muy alta velocidad, menor alcance y penetración" },
     { code: "n41 (2500 MHz)", mhz: 2595, role: "5G de alta capacidad media" },
-    { code: "n258 (26 GHz mmWave)", mhz: 26500, role: "Velocidad extrema en línea de vista muy corta" }
+    { code: "n78 (3500 MHz C-Band)", mhz: 3500, role: "5G de alta velocidad, menor penetración en muros" },
+    { code: "n258 (26 GHz mmWave)", mhz: 26500, role: "Velocidad muy alta en distancia corta y línea de vista" }
   ],
   UMTS: [
     { code: "B5 (850 MHz)", mhz: 880, role: "3G de alcance extendido" },
@@ -27,130 +28,207 @@ const BAND_CATALOG = {
     { code: "GSM 900", mhz: 942, role: "Cobertura clásica de largo alcance" },
     { code: "DCS 1800", mhz: 1842, role: "Capacidad urbana" },
     { code: "PCS 1900", mhz: 1960, role: "Frecuencia regional de capacidad" }
+  ],
+  WIFI: [
+    { code: "Wi-Fi 2.4 GHz (Canal 1)", mhz: 2412, role: "Mejor alcance y paso por paredes; más saturado" },
+    { code: "Wi-Fi 2.4 GHz (Canal 6)", mhz: 2437, role: "Canal central clásico de 2.4 GHz" },
+    { code: "Wi-Fi 2.4 GHz (Canal 11)", mhz: 2462, role: "Canal superior de 2.4 GHz" },
+    { code: "Wi-Fi 5 GHz (Canal 36)", mhz: 5180, role: "Mayor velocidad en espacios cercanos; menos alcance" },
+    { code: "Wi-Fi 5 GHz (Canal 149)", mhz: 5745, role: "Alta velocidad para enlaces puntuales o cercanos" }
   ]
 };
 
-const CABLE_LOSS_PER_100M_AT_1GHZ = {
-  RG58: 46.5,
-  RG6: 19.6,
-  LMR200: 34.4,
-  LMR400: 13.1
+// Atenuación de referencia a 1000 MHz (dB/100m) y factor de velocidad (VF)
+const CABLE_SPECS = {
+  RG58:   { name: "RG-58 (50 Ω)", loss1GPer100m: 46.5, vf: 0.66 },
+  RG6:    { name: "RG-6 Quad (75 Ω)", loss1GPer100m: 19.6, vf: 0.82 },
+  LMR200: { name: "LMR-200 (50 Ω)", loss1GPer100m: 34.4, vf: 0.83 },
+  LMR400: { name: "LMR-400 (50 Ω)", loss1GPer100m: 13.1, vf: 0.85 }
 };
 
 const METRIC_GUIDES = {
   rsrp: {
     title: "Intensidad de Señal (dBm / RSRP / RSSI)",
-    what: "Mide la potencia real con la que llega la señal a tu dispositivo. Entre -65 y -80 dBm es excelente/buena; entre -81 y -95 dBm es regular; por debajo de -100 dBm se vuelve lenta o se desconecta.",
+    what: "Mide la potencia real que llega a tu equipo. Entre -65 y -80 dBm es fuerte/buena; entre -81 y -95 dBm es media; por debajo de -100 dBm es débil y causa cortes o lentitud.",
     steps: [
-      "Sube el equipo o router 1.5 a 2 metros y acércalo a ventanas o zonas elevadas.",
-      "Aléjalo de muros gruesos, bloques de concreto, láminas de zinc/aluminio, microondas y motores.",
-      "Si usas antena exterior, acorta el cable coaxial y apunta hacia la dirección con mayor nivel de dBm."
+      "Sube el equipo o receptor 1.5 a 2 m y colócalo cerca de ventanas o zona elevada.",
+      "Aléjalo de paredes gruesas, bloques de concreto, láminas de zinc/aluminio, microondas y motores.",
+      "Si usas antena exterior, acorta el cable coaxial y gira despacio hacia donde suba el valor en dBm."
     ]
   },
   sinr: {
     title: "Calidad de Enlace / SINR (dB)",
-    what: "Compara la señal útil frente al ruido y la interferencia de otras celdas o redes. Valores >= 10 dB suelen dar buen rendimiento; valores negativos indican mucha interferencia.",
+    what: "Compara la señal útil frente al ruido e interferencia. Valores >= 10 dB indican señal limpia; valores bajos o negativos muestran saturación o interferencia.",
     steps: [
-      "Cambia a un canal o frecuencia menos saturada si estás en Wi-Fi.",
-      "Evita tener múltiples equipos transmitiendo pegados al receptor.",
-      "Busca una ubicación con menos rebotes o reflexión metálica directa."
+      "En Wi-Fi, prueba otro canal menos ocupado o acerca el dispositivo si está al límite de cobertura.",
+      "Separa el receptor de fuentes de ruido eléctrico o múltiples transmisores pegados.",
+      "Evita rebotes fuertes contra superficies metálicas cercanas."
     ]
   },
   freq: {
-    title: "Frecuencia Actual (MHz / GHz)",
-    what: "Las frecuencias bajas (< 1000 MHz o 2.4 GHz) viajan más lejos y atraviesan mejor paredes; las frecuencias altas (>= 1800 MHz o 5 GHz) ofrecen mayor velocidad pero pierden fuerza más rápido con la distancia y los obstáculos.",
+    title: "Frecuencia Actual (MHz)",
+    what: "Las frecuencias bajas (< 1000 MHz o 2.4 GHz) llegan más lejos y atraviesan mejor paredes; las altas (>= 1800 MHz o 5 GHz) dan más velocidad cerca pero pierden fuerza antes.",
     steps: [
-      "Revisa la tarjeta 'Frecuencia Conectada vs. Recomendada' para ver si te conviene cambiar de banda.",
-      "En interiores lejanos a la torre/router, prioriza frecuencia baja/penetrante.",
-      "Cerca de la fuente y sin muros, aprovecha frecuencia alta para mayor velocidad."
+      "Mira la tarjeta 'Frecuencia Conectada vs. Recomendada' para ver qué banda conviene más hoy.",
+      "Usa el Selector de Bandas para simular cómo cambia el tamaño de antena y la pérdida por distancia.",
+      "Si estás lejos o tras muros, prioriza frecuencia baja/penetrante."
     ]
   },
   dist: {
     title: "Antena y Distancia Estimada",
-    what: "Calcula una distancia aproximada hacia la antena/sector usando la potencia recibida, la frecuencia y la pérdida de trayectoria. Edificios, árboles y colinas hacen que la distancia real pueda variar.",
+    what: "Estima la distancia aproximada a la antena/sector usando la potencia recibida y la frecuencia. Edificios, árboles y cerros alteran la estimación real.",
     steps: [
-      "Mira el mapa para identificar la dirección aproximada del marcador de antena.",
-      "Verifica si hay obstáculos físicos en esa dirección y eleva el punto de recepción.",
-      "Si el enlace es largo o inestable, revisa el módulo 'Planos y Cables' para construir una antena direccional."
+      "Observa el marcador y la línea en el mapa para ubicar la dirección aproximada.",
+      "Eleva la antena o receptor para ganar línea de vista sobre obstáculos.",
+      "Si el enlace es largo, revisa en 'Planos y Cables' qué antena direccional y qué largo de cable usar."
     ]
   },
   advisor: {
-    title: "Asesor de Frecuencia Conectada vs. Recomendada",
-    what: "Compara la banda/frecuencia activa con la más adecuada según tu nivel de señal y tipo de red para darte pasos concretos de cambio.",
+    title: "Frecuencia Conectada vs. Recomendada",
+    what: "Compara tu frecuencia actual con la recomendada según el nivel de señal y el tipo de conexión para guiarte paso a paso.",
     steps: [
-      "Toca 'Ajustes de Red / Banda' para ir a la configuración de red del sistema.",
-      "En Wi-Fi, alterna entre 2.4 GHz (alcance/paredes) y 5 GHz (velocidad cerca).",
-      "En red móvil, comprueba el modo de red preferido o desplázate unos metros para captar un mejor sector."
+      "Toca 'Cambiar Banda / Red (Ajustes)' para ir directo a los ajustes de red del teléfono.",
+      "En Wi-Fi, elige 2.4 GHz para alcance/paredes o 5 GHz para velocidad cercana.",
+      "En red móvil, revisa el modo de red preferido o muévete a un punto con mejor recepción."
     ]
   },
   map: {
-    title: "Mapa Local · Ubicación y Distancia de Antena",
-    what: "Muestra tu ubicación (vía GPS o coordenada de respaldo), un marcador estimado de la antena y la distancia en línea recta. Si no hay conexión para cargar tiles externos, activa automáticamente el mapa offline.",
+    title: "Mapa Local · Tu Posición y Antena",
+    what: "Muestra tu ubicación, un marcador estimado de antena y la distancia aproximada. Si no hay conexión para cargar tiles externos, activa el mapa offline automáticamente.",
     steps: [
-      "Activa el GPS / Ubicación del teléfono y concede el permiso de ubicación a la app.",
-      "Camina o gira el receptor observando si la distancia estimada y los dBm mejoran.",
-      "Usa la orientación del mapa como referencia inicial para apuntar antenas direccionales."
+      "Activa la ubicación/GPS del teléfono y concede permiso de ubicación a la app.",
+      "Compara cómo cambia la distancia estimada y los dBm al moverte o girar el equipo.",
+      "Usa la orientación del mapa como apoyo inicial antes de apuntar una antena."
     ]
   }
 };
 
-const ANTENNA_PLANS = [
-  {
-    name: "Dipolo de Media Onda (λ/2)",
-    signal: "Señal omnidireccional de base para bandas bajas/medias (ej. 700–900 MHz o 1800 MHz).",
-    reach: "Alcance amplio en terreno abierto o semiabierto; ideal como punto de partida confiable.",
-    materials: "2 varillas o tubos de cobre/aluminio (3–6 mm), soporte aislante (PVC/teflón), conector hembra N o SO-239, caja estanca.",
-    cable: "Coaxial LMR-200 / LMR-400 (50 Ω) o RG-6 (75 Ω). Longitud recomendada: lo más corta posible (ideal < 3–5 m).",
-    whyCableShort: "Cada metro de cable pierde dB por resistencia y dieléctrico. Un cable largo o delgado disipa la señal y reduce el alcance útil."
-  },
-  {
-    name: "Antena Yagi Direccional (3 o 5 Elementos)",
-    signal: "Enlace direccional de alta ganancia para apuntar hacia una torre o punto lejano.",
-    reach: "Mayor alcance en el eje frontal y menor interferencia lateral/trasera.",
-    materials: "Boom soporte, 1 reflector trasero, 1 dipolo activo, 2 a 4 directores de varilla de cobre/aluminio y conector N/SMA.",
-    cable: "LMR-240 / LMR-400 lo más corto posible (1.5 a 4 m), con conectores sellados contra humedad.",
-    whyCableShort: "A mayor frecuencia, mayor pérdida por metro; si el cable es demasiado largo, pierde más dB de los que aporta la Yagi."
-  },
-  {
-    name: "Antena Ground-Plane (GP) con Radiales",
-    signal: "Recepción/transmisión de horizonte bajo con plano de tierra radial.",
-    reach: "Buen desempeño costero/abierto y recepción estable a baja elevación.",
-    materials: "1 elemento vertical radiante + 3 o 4 radiales inclinados (~30°–45°), base metálica/conector chasis.",
-    cable: "Cable coaxial de baja pérdida corto (< 4 m), evitando bucles apretados o aplastamientos.",
-    whyCableShort: "Mantener el tramo corto minimiza atenuación y evita desadaptaciones por cables largos de mala calidad."
-  },
-  {
-    name: "Antena Cantena / Guía de Onda Cilíndrica",
-    signal: "Enlace direccional de corto/medio alcance en frecuencias altas (ej. 2.4 GHz).",
-    reach: "Cientos de metros a ~1–2 km en línea de vista despejada con equipo compatible.",
-    materials: "Lata metálica limpia de diámetro adecuado, sonda de cobre soldada al conector N/SMA, soporte.",
-    cable: "Pigtail / coaxial corto de baja pérdida (ideal <= 1.5–2 m).",
-    whyCableShort: "En 2.4 GHz un cable largo o RG-58 extenso pierde gran parte de la señal antes de llegar al equipo."
-  },
-  {
-    name: "Reflector Parabólico / Corner Reflector",
-    signal: "Alta direccionalidad para enfocar señal débil en enlaces puntuales.",
-    reach: "Alcance superior en dirección focal con buena línea de vista.",
-    materials: "Superficie reflectora (malla o lámina metálica curvada o en ángulo de 90°), alimentador (dipolo/biquad) en el punto focal.",
-    cable: "Tramo mínimo de cable de baja pérdida entre alimentador y equipo.",
-    whyCableShort: "La ganancia del reflector se desperdicia si el cable de bajada es largo o de alta atenuación."
-  }
-];
-
-let leafletMap = null;
-let userLayer = null;
-let antLayer = null;
-let lineLayer = null;
-let currentLang = "es";
-
-function wavelengthMeters(freqMhz) {
-  return 300 / Math.max(1, freqMhz);
+function fmtLen(meters) {
+  if (meters >= 1) return `${meters.toFixed(3)} m (${(meters * 100).toFixed(1)} cm)`;
+  return `${(meters * 100).toFixed(2)} cm (${(meters * 1000).toFixed(1)} mm)`;
 }
 
-function cableAttenuationDb(cableType, freqMhz, lengthMeters) {
-  const base1G = CABLE_LOSS_PER_100M_AT_1GHZ[cableType] || 25;
-  const freqFactor = Math.sqrt(Math.max(1, freqMhz) / 1000);
-  return (base1G / 100) * freqFactor * lengthMeters;
+function buildAntennaPlans(freqMhz, cableType, cableLen) {
+  const k = 0.95; // factor de acortamiento típico por efecto de extremo / diámetro de conductor en aire
+  const lam = SPEED_OF_LIGHT_M_PER_SEC / Math.max(1, freqMhz);
+  const halfWave = lam / 2;
+
+  // 1. Dipolo de media onda (λ/2)
+  const dipoleTotal = halfWave * k;
+  const dipoleElement = dipoleTotal / 2;
+
+  // 2. Yagi de 3 elementos (Reflector, Dipolo activo, 1 Director) - proporciones clásicas de diseño
+  const yagiRef = halfWave * 1.05 * k;
+  const yagiDrv = halfWave * k;
+  const yagiDir = halfWave * 0.92 * k;
+  const yagiGapRefDrv = lam * 0.20;
+  const yagiGapDrvDir = lam * 0.15;
+
+  // 3. Monopolo vertical de 1/4 de onda (λ/4) sobre plano de tierra
+  const monopoloElem = (lam / 4) * k;
+
+  // 4. Ground-Plane (GP) vertical λ/4 + 4 radiales λ/4
+  const gpVertical = (lam / 4) * k;
+  const gpRadial = (lam / 4) * k;
+
+  // 5. Cantena (guía de onda cilíndrica) para frecuencias >= 1500 MHz
+  const cantennaDiam = lam * 0.76; // diámetro interno guía circular ~0.76 λ
+  const cantennaProbe = lam * 0.25 * k; // sonda de 1/4 λ
+  const cantennaProbeFromBack = lam * 0.25; // distancia desde el fondo cerrado ~1/4 λ
+
+  const cableInfo = CABLE_SPECS[cableType] || CABLE_SPECS.LMR200;
+  const lossDb = (cableInfo.loss1GPer100m / 100) * Math.sqrt(Math.max(1, freqMhz) / 1000) * cableLen;
+  const powerRemainingPct = (Math.pow(10, -lossDb / 10) * 100).toFixed(1);
+
+  return [
+    {
+      id: "dipole",
+      title: "1. Dipolo de Media Onda (λ/2) — Omnidireccional Base",
+      howItWorks: "Tiene dos brazos iguales conectados al centro (uno al conductor central del coaxial y el otro a la malla/tierra). La señal resuena mejor cuando el largo total ronda la mitad de la longitud de onda ajustada por el factor de acortamiento (~0.95).",
+      materials: "2 varillas o tubos de cobre/aluminio (3–6 mm), soporte plástico/PVC aislante, conector hembra N o SO-239, caja estanca.",
+      measurements: `Longitud total: ${fmtLen(dipoleTotal)} · Cada brazo: ${fmtLen(dipoleElement)} (λ = ${fmtLen(lam)}).`,
+      cableRule: `Usa coaxial de ${cableInfo.name} lo más corto posible (ideal <= 3–5 m). Con ${cableLen} m pierdes ~${lossDb.toFixed(2)} dB (llega ~${powerRemainingPct}% de la potencia).`,
+      whyShortCable: "Cada metro de cable disipa señal como calor y resistencia; si el cable es largo, pierde más fuerza de la que ayuda la antena.",
+      svg: `<svg viewBox="0 0 520 110" class="blueprint-svg">
+        <line x1="260" y1="88" x2="260" y2="54" stroke="#38bdf8" stroke-width="3"/>
+        <line x1="70" y1="54" x2="254" y2="54" stroke="#10b981" stroke-width="5"/>
+        <line x1="266" y1="54" x2="450" y2="54" stroke="#10b981" stroke-width="5"/>
+        <circle cx="260" cy="54" r="5" fill="#f59e0b"/>
+        <text x="115" y="34" fill="#eef4fb" font-size="11">Brazo A: ${fmtLen(dipoleElement)}</text>
+        <text x="275" y="34" fill="#eef4fb" font-size="11">Brazo B: ${fmtLen(dipoleElement)}</text>
+        <text x="150" y="98" fill="#8fa3bd" font-size="11">Total dipolo: ${fmtLen(dipoleTotal)} · Feed central 50/75 Ω</text>
+      </svg>`
+    },
+    {
+      id: "yagi",
+      title: "2. Antena Yagi de 3 Elementos — Direccional de Alcance",
+      howItWorks: "Un elemento trasero (reflector, un poco más largo) rebota señal hacia adelante; el elemento central (dipolo activo) recibe/entrega la señal; el elemento delantero (director, más corto) enfoca el haz en una dirección.",
+      materials: "1 boom de aluminio o PVC rígido, 1 reflector trasero, 1 dipolo activo central, 1 director frontal, abrazaderas aislantes y conector N/SMA.",
+      measurements: `Reflector: ${fmtLen(yagiRef)} · Dipolo: ${fmtLen(yagiDrv)} · Director: ${fmtLen(yagiDir)} · Separación Ref-Dip: ${fmtLen(yagiGapRefDrv)} · Dip-Dir: ${fmtLen(yagiGapDrvDir)}.`,
+      cableRule: `Usa ${cableInfo.name} corto (1.5 a 4 m). En ${cableLen} m de ${cableInfo.name} pierdes ~${lossDb.toFixed(2)} dB.`,
+      whyShortCable: "Si pones un cable largo o delgado en una Yagi, el cable se come la ganancia direccional antes de llegar al equipo.",
+      svg: `<svg viewBox="0 0 520 110" class="blueprint-svg">
+        <line x1="60" y1="55" x2="460" y2="55" stroke="#8fa3bd" stroke-width="2" stroke-dasharray="5,4"/>
+        <line x1="120" y1="20" x2="120" y2="90" stroke="#f59e0b" stroke-width="4"/>
+        <line x1="250" y1="24" x2="250" y2="86" stroke="#10b981" stroke-width="4"/>
+        <line x1="370" y1="28" x2="370" y2="82" stroke="#38bdf8" stroke-width="4"/>
+        <polygon points="445,55 432,49 432,61" fill="#38bdf8"/>
+        <text x="85" y="104" fill="#f59e0b" font-size="10">Ref ${fmtLen(yagiRef)}</text>
+        <text x="215" y="104" fill="#10b981" font-size="10">Dip ${fmtLen(yagiDrv)}</text>
+        <text x="340" y="104" fill="#38bdf8" font-size="10">Dir ${fmtLen(yagiDir)}</text>
+      </svg>`
+    },
+    {
+      id: "monopole",
+      title: "3. Antena Monopolo Vertical (λ/4) — Señal Vertical Simple",
+      howItWorks: "Usa una varilla vertical de un cuarto de onda sobre un plano conductor o tierra; el plano metálico actúa como espejo eléctrico para completar el equivalente a un dipolo.",
+      materials: "1 varilla vertical de cobre/latón/aluminio, base metálica o plano de tierra, conector chasis N/SMA/BNC.",
+      measurements: `Varilla vertical: ${fmtLen(monopoloElem)} (1/4 λ × 0.95).`,
+      cableRule: `Cable ${cableInfo.name} lo más corto posible (${cableLen} m -> ~${lossDb.toFixed(2)} dB de pérdida estimada).`,
+      whyShortCable: "Sin plano de tierra estable o con cable largo de alta pérdida, la señal cae rápido y cambia la resonancia.",
+      svg: `<svg viewBox="0 0 520 110" class="blueprint-svg">
+        <line x1="110" y1="84" x2="410" y2="84" stroke="#8fa3bd" stroke-width="4"/>
+        <line x1="260" y1="84" x2="260" y2="26" stroke="#10b981" stroke-width="5"/>
+        <circle cx="260" cy="84" r="5" fill="#f59e0b"/>
+        <text x="272" y="54" fill="#10b981" font-size="11">Varilla: ${fmtLen(monopoloElem)}</text>
+        <text x="150" y="102" fill="#8fa3bd" font-size="11">Plano de tierra conductor debajo de la base</text>
+      </svg>`
+    },
+    {
+      id: "groundplane",
+      title: "4. Antena Ground-Plane (GP) con 4 Radiales — Horizonte Abierto",
+      howItWorks: "Combina un elemento vertical central con 3 o 4 radiales inclinados hacia abajo (~30°–45°) conectados a la malla; crea un plano artificial estable para recepción/transmisión omnidireccional.",
+      materials: "1 varilla vertical, 4 varillas radiales, conector N/SO-239 con terminales para radiales y soporte mástil.",
+      measurements: `Elemento vertical: ${fmtLen(gpVertical)} · Cada uno de los 4 radiales: ${fmtLen(gpRadial)} (inclinados ~35°–45°).`,
+      cableRule: `Cable ${cableInfo.name} corto (< 4 m recomendado; en ${cableLen} m pierdes ~${lossDb.toFixed(2)} dB).`,
+      whyShortCable: "Un tramo largo y fino atenúa la señal antes de entrar al receptor y anula parte de la ventaja de ubicar la antena en alto.",
+      svg: `<svg viewBox="0 0 520 110" class="blueprint-svg">
+        <line x1="260" y1="56" x2="260" y2="18" stroke="#10b981" stroke-width="5"/>
+        <line x1="260" y1="56" x2="150" y2="92" stroke="#38bdf8" stroke-width="3"/>
+        <line x1="260" y1="56" x2="370" y2="92" stroke="#38bdf8" stroke-width="3"/>
+        <line x1="260" y1="56" x2="210" y2="96" stroke="#38bdf8" stroke-width="2.5"/>
+        <line x1="260" y1="56" x2="310" y2="96" stroke="#38bdf8" stroke-width="2.5"/>
+        <text x="272" y="34" fill="#10b981" font-size="11">Vertical: ${fmtLen(gpVertical)}</text>
+        <text x="65" y="104" fill="#38bdf8" font-size="10">Radiales (~35°–45°): ${fmtLen(gpRadial)}</text>
+      </svg>`
+    },
+    {
+      id: "cantena",
+      title: "5. Cantena (Guía de Onda Cilíndrica) — Alta Frecuencia Direccional",
+      howItWorks: "Usa un cilindro metálico cerrado en un extremo como guía de onda: una pequeña sonda de cobre alimentada por el conector central excita el modo dentro del tubo y dirige la energía por la boca abierta.",
+      materials: "Cilindro metálico limpio (lata/tubo conductivo sin pintura aislante interna), alambre grueso de cobre para la sonda, conector N/SMA.",
+      measurements: `Diámetro guía ~0.76 λ: ${fmtLen(cantennaDiam)} · Sonda: ${fmtLen(cantennaProbe)} · Posición sonda desde fondo: ${fmtLen(cantennaProbeFromBack)}.`,
+      cableRule: `Pigtail / cable ${cableInfo.name} ultra corto (ideal <= 1–2 m; en ${cableLen} m pierdes ~${lossDb.toFixed(2)} dB).`,
+      whyShortCable: "En frecuencias altas (como 2.4 GHz o superiores), la pérdida por metro de cable es alta y un cable largo destruye la señal.",
+      svg: `<svg viewBox="0 0 520 110" class="blueprint-svg">
+        <rect x="110" y="24" width="260" height="62" fill="none" stroke="#8fa3bd" stroke-width="3"/>
+        <line x1="110" y1="24" x2="110" y2="86" stroke="#f59e0b" stroke-width="4"/>
+        <line x1="175" y1="86" x2="175" y2="52" stroke="#10b981" stroke-width="4"/>
+        <polygon points="395,55 382,48 382,62" fill="#38bdf8"/>
+        <text x="120" y="102" fill="#8fa3bd" font-size="10">Ø ~${fmtLen(cantennaDiam)} · Sonda ${fmtLen(cantennaProbe)} a ${fmtLen(cantennaProbeFromBack)} del fondo</text>
+      </svg>`
+    }
+  ];
 }
 
 function estimateDistanceMeters(dbm, freqMhz) {
@@ -158,6 +236,12 @@ function estimateDistanceMeters(dbm, freqMhz) {
   const freqCorr = Math.max(1, freqMhz) / 1800;
   return Math.max(25, Math.round((60 * Math.pow(10, (-68 - clamped) / 34)) / Math.sqrt(freqCorr)));
 }
+
+let leafletMap = null;
+let userLayer = null;
+let antLayer = null;
+let lineLayer = null;
+let currentLang = "es";
 
 function initTabs() {
   document.querySelectorAll(".tab").forEach((btn) => {
@@ -228,10 +312,46 @@ function openGuideModal(key) {
   document.getElementById("guideModal").classList.remove("hidden");
 }
 
-function initBandsTab() {
+function openAndroidNetworkSettings() {
+  if (window.AntenaBridge && typeof window.AntenaBridge.openNetworkSettings === "function") {
+    try { window.AntenaBridge.openNetworkSettings(); return; } catch (_) {}
+  }
+  openGuideModal("advisor");
+}
+
+function initBandsSelector() {
   const techSel = document.getElementById("bandTechSelect");
   const itemSel = document.getElementById("bandItemSelect");
+  const goalSel = document.getElementById("bandGoalSelect");
   const box = document.getElementById("bandDetailsBox");
+  const applyBtn = document.getElementById("btnApplyBandToCalc");
+  const openBtn = document.getElementById("btnOpenBandSettings");
+
+  const getSelectedBand = () => {
+    const list = BAND_CATALOG[techSel.value] || BAND_CATALOG.LTE;
+    return list[Number(itemSel.value) || 0] || list[0];
+  };
+
+  const renderBand = () => {
+    const b = getSelectedBand();
+    const goal = goalSel.value;
+    const lam = SPEED_OF_LIGHT_M_PER_SEC / b.mhz;
+    const dipole = lam / 2 * 0.95;
+    const fspl1km = 20 * Math.log10(1) + 20 * Math.log10(b.mhz) + 32.44;
+    const fitMsg = goal === "range"
+      ? (b.mhz < 1000 ? "Adecuada para largo alcance y paso por paredes." : "Frecuencia media/alta: mejor elevar la antena o usar línea de vista.")
+      : goal === "speed"
+        ? (b.mhz >= 1800 ? "Buen potencial de ancho de banda si tienes señal limpia." : "Banda baja: prioriza alcance sobre velocidad pico.")
+        : "Equilibrio general según distancia y obstáculos.";
+
+    box.innerHTML = `
+      <div><strong>${b.code}</strong> · Frecuencia central: <strong>${b.mhz} MHz</strong></div>
+      <div>${b.role}</div>
+      <div>Longitud de onda (λ): <strong>${fmtLen(lam)}</strong> · Dipolo λ/2 aprox.: <strong>${fmtLen(dipole)}</strong></div>
+      <div>Pérdida de espacio libre de referencia a 1 km: <strong>~${fspl1km.toFixed(1)} dB</strong></div>
+      <div style="margin-top:4px;color:var(--accent)">${fitMsg}</div>
+    `;
+  };
 
   const populateItems = () => {
     const list = BAND_CATALOG[techSel.value] || BAND_CATALOG.LTE;
@@ -242,78 +362,69 @@ function initBandsTab() {
       opt.textContent = b.code;
       itemSel.appendChild(opt);
     });
-    updateBandBox();
-  };
-
-  const updateBandBox = () => {
-    const list = BAND_CATALOG[techSel.value] || BAND_CATALOG.LTE;
-    const b = list[Number(itemSel.value) || 0] || list[0];
-    const lam = wavelengthMeters(b.mhz);
-    const dipoleHalf = (lam * 0.475).toFixed(3);
-    box.innerHTML = `
-      <strong>${b.code}</strong> · Frecuencia central: <strong>${b.mhz} MHz</strong><br/>
-      <span>Uso típico: ${b.role}</span><br/>
-      <span>Longitud de onda (λ): <strong>${lam.toFixed(3)} m</strong> · Dipolo λ/2 aprox.: <strong>${dipoleHalf} m</strong></span>
-    `;
+    renderBand();
   };
 
   techSel.addEventListener("change", populateItems);
-  itemSel.addEventListener("change", updateBandBox);
+  itemSel.addEventListener("change", renderBand);
+  goalSel.addEventListener("change", renderBand);
+
+  applyBtn.addEventListener("click", () => {
+    const b = getSelectedBand();
+    document.getElementById("calcFreq").value = b.mhz;
+    recalcCableAndPlans();
+    document.querySelector('.tab[data-tab="antenas"]').click();
+  });
+
+  openBtn.addEventListener("click", openAndroidNetworkSettings);
   populateItems();
 }
 
-function initAntennaCalculatorAndPlans() {
-  const freqInput = document.getElementById("calcFreq");
-  const lenInput = document.getElementById("calcCableLen");
-  const cableSel = document.getElementById("calcCableType");
-  const distInput = document.getElementById("calcDist");
-  const physBox = document.getElementById("cablePhysicsBox");
+function recalcCableAndPlans() {
+  const freq = Math.max(50, Number(document.getElementById("calcFreq").value) || 2412);
+  const len = Math.max(0.1, Number(document.getElementById("calcCableLen").value) || 5);
+  const cableKey = document.getElementById("calcCableType").value;
+  const dist = Math.max(10, Number(document.getElementById("calcDist").value) || 800);
 
-  const recalc = () => {
-    const freq = Math.max(50, Number(freqInput.value) || 1800);
-    const len = Math.max(0.2, Number(lenInput.value) || 5);
-    const cable = cableSel.value;
-    const dist = Math.max(10, Number(distInput.value) || 1000);
+  const cable = CABLE_SPECS[cableKey] || CABLE_SPECS.LMR200;
+  const lam = SPEED_OF_LIGHT_M_PER_SEC / freq;
+  const lossDb = (cable.loss1GPer100m / 100) * Math.sqrt(freq / 1000) * len;
+  const powerPct = (Math.pow(10, -lossDb / 10) * 100).toFixed(1);
+  const fsplDb = 20 * Math.log10(dist / 1000) + 20 * Math.log10(freq) + 32.44;
 
-    const lam = wavelengthMeters(freq);
-    const dipoleTotal = (lam * 0.475).toFixed(3);
-    const dipoleArm = (lam * 0.2375).toFixed(3);
-    const yagiReflector = (lam * 0.50).toFixed(3);
-    const yagiDriven = (lam * 0.47).toFixed(3);
-    const yagiDirector = (lam * 0.44).toFixed(3);
+  document.getElementById("cablePhysicsBox").innerHTML = `
+    <div><strong>Frecuencia: ${freq} MHz</strong> · Longitud de onda en aire (λ): <strong>${fmtLen(lam)}</strong></div>
+    <div>Cable <strong>${cable.name}</strong> (VF ${cable.vf}) × <strong>${len} m</strong> = pérdida estimada de <strong style="color:var(--warn)">-${lossDb.toFixed(2)} dB</strong> (queda ~<strong>${powerPct}%</strong> de potencia).</div>
+    <div>Pérdida de trayectoria en espacio libre a <strong>${dist} m</strong>: <strong>~${fsplDb.toFixed(1)} dB</strong>.</div>
+    <div style="margin-top:4px;color:var(--muted)">Regla práctica: cada 3 dB perdidos equivale a la mitad de la potencia. Acortar el cable o pasar a LMR-400 ahorra dB valiosos.</div>
+  `;
 
-    const lossDb = cableAttenuationDb(cable, freq, len);
-    const fsplDb = 20 * Math.log10(dist / 1000) + 20 * Math.log10(freq) + 32.44;
-
-    physBox.innerHTML = `
-      <div><strong>Medidas calculadas a ${freq} MHz (λ = ${lam.toFixed(3)} m):</strong></div>
-      <div>• Dipolo λ/2: total <strong>${dipoleTotal} m</strong> (cada brazo <strong>${dipoleArm} m</strong>)</div>
-      <div>• Yagi base: reflector <strong>${yagiReflector} m</strong> · dipolo <strong>${yagiDriven} m</strong> · director <strong>${yagiDirector} m</strong></div>
-      <div>• Pérdida estimada en <strong>${len} m</strong> de <strong>${cable}</strong>: <strong style="color:var(--warn)">-${lossDb.toFixed(2)} dB</strong> (Pérdida de trayectoria libre a ${dist} m: ~${fsplDb.toFixed(1)} dB)</div>
-      <div style="margin-top:4px;color:var(--muted)">Si alargas el cable sin cambiar a uno de menor pérdida, pierdes más potencia en el tramo y reduces el alcance efectivo.</div>
-    `;
-  };
-
-  [freqInput, lenInput, cableSel, distInput].forEach((el) => el.addEventListener("input", recalc));
-  recalc();
-
-  const plansContainer = document.getElementById("antennaPlansContainer");
-  plansContainer.innerHTML = "";
-  ANTENNA_PLANS.forEach((p) => {
+  const container = document.getElementById("antennaPlansContainer");
+  container.innerHTML = "";
+  const plans = buildAntennaPlans(freq, cableKey, len);
+  plans.forEach((p) => {
     const card = document.createElement("div");
     card.className = "card";
     card.innerHTML = `
-      <h3>${p.name}</h3>
+      <h3>${p.title}</h3>
+      ${p.svg}
       <ul class="spec-list">
-        <li><strong>Señal que capta:</strong> ${p.signal}</li>
-        <li><strong>Distancia / Alcance:</strong> ${p.reach}</li>
+        <li><strong>Cómo funciona:</strong> ${p.howItWorks}</li>
         <li><strong>Materiales:</strong> ${p.materials}</li>
-        <li><strong>Cable recomendado:</strong> ${p.cable}</li>
-        <li><strong>Por qué no alargar el cable:</strong> ${p.whyCableShort}</li>
+        <li><strong>Medidas calculadas (${freq} MHz):</strong> ${p.measurements}</li>
+        <li><strong>Cable coaxial:</strong> ${p.cableRule}</li>
+        <li><strong>Por qué mantener el cable corto:</strong> ${p.whyShortCable}</li>
       </ul>
     `;
-    plansContainer.appendChild(card);
+    container.appendChild(card);
   });
+}
+
+function initAntennaCalculator() {
+  ["calcFreq", "calcCableLen", "calcCableType", "calcDist"].forEach((id) => {
+    document.getElementById(id).addEventListener("input", recalcCableAndPlans);
+  });
+  recalcCableAndPlans();
 }
 
 function renderOfflineMap(distM) {
@@ -399,7 +510,7 @@ function saveHistorySample(dbm, sinr, freqMhz, distM) {
     freqMhz,
     distM
   });
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, 30)));
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(arr.slice(0, 40)));
 }
 
 function renderHistory() {
@@ -475,12 +586,12 @@ function refreshTelemetry() {
   document.getElementById("freqNow").textContent = `${freqMhz} MHz (${bandLabel})`;
   document.getElementById("freqBest").textContent = recFreq;
   document.getElementById("freqGuideText").textContent = isWifi
-    ? "Cómo conectarte: abre Ajustes > Wi-Fi, toca la red de 2.4 GHz si buscas alcance a través de paredes o la de 5 GHz si estás cerca y buscas máxima velocidad."
-    : "Cómo conectarte: entra a Ajustes > Red móvil > Tipo de red preferido / Selección de red, o desplázate a un punto con línea de vista más despejada para enganchar la mejor banda.";
+    ? "Cómo conectarte: abre Ajustes > Wi-Fi, toca 2.4 GHz para alcance y muros o 5 GHz para mayor velocidad cerca."
+    : "Cómo conectarte: abre Ajustes de red o usa el Selector de Bandas para ver cómo cambia el diseño de antena y cable para tu frecuencia.";
 
   document.getElementById("coachAdvice").textContent = dbm < -88
-    ? "Acción recomendada: eleva el equipo 1.5–2 m, aléjalo de paredes gruesas o metal y, si el problema persiste, revisa en 'Planos y Cables' el diseño ideal con cable corto."
-    : "Buen nivel de partida: mantén el receptor despejado y evita cables coaxiales largos o con dobleces pronunciados.";
+    ? "Acción recomendada: sube el equipo 1.5–2 m, aléjalo de muros gruesos o metal y consulta 'Planos y Cables' para usar un cable corto de baja pérdida."
+    : "Buen nivel de partida: mantén el receptor despejado y evita cables coaxiales largos o doblados.";
 
   const lat = nativeData && typeof nativeData.lat === "number" ? nativeData.lat : 23.1136;
   const lon = nativeData && typeof nativeData.lon === "number" ? nativeData.lon : -82.3666;
@@ -510,8 +621,8 @@ async function runSpeedAndPingTest() {
 document.addEventListener("DOMContentLoaded", () => {
   initTabs();
   initLongPress();
-  initBandsTab();
-  initAntennaCalculatorAndPlans();
+  initBandsSelector();
+  initAntennaCalculator();
   refreshTelemetry();
   renderHistory();
 
@@ -522,12 +633,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     refreshTelemetry();
   });
-  document.getElementById("btnOpenNetSettings").addEventListener("click", () => {
-    if (window.AntenaBridge && typeof window.AntenaBridge.openNetworkSettings === "function") {
-      try { window.AntenaBridge.openNetworkSettings(); return; } catch (_) {}
-    }
-    openGuideModal("advisor");
-  });
+  document.getElementById("btnOpenNetSettings").addEventListener("click", openAndroidNetworkSettings);
   document.getElementById("btnRunSpeed").addEventListener("click", runSpeedAndPingTest);
   document.getElementById("btnClearHistory").addEventListener("click", () => {
     localStorage.removeItem(STORAGE_KEY);

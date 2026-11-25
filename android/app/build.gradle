@@ -10,8 +10,8 @@ android {
         applicationId "com.antenalibre.app"
         minSdk 23
         targetSdk 34
-        versionCode 3
-        versionName "0.3.0-global"
+        versionCode 10
+        versionName "1.0.0-ultimate"
     }
 
     buildTypes {
