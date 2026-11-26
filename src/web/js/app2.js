@@ -11,7 +11,10 @@ function opt(v, label, cur) { return '<option value="' + v + '"' + (String(v) ==
 
 // ================= ANTENAS =================
 AL.views.ant = {
-  render: function () { var h = AS.sel ? detail() : list(); $('#v-antenas').innerHTML = h; },
+  render: function () {
+    if (AS.sel === '__tab' && AL.tablita) { $('#v-antenas').innerHTML = AL.tablita.html(); AL.tablita.mount(); return; }
+    var h = AS.sel ? detail() : list(); $('#v-antenas').innerHTML = h;
+  },
   live: function () {}
 };
 function freqSelect() {
@@ -20,8 +23,11 @@ function freqSelect() {
   BANDS.forEach(function (b) { o += opt(b[0], b[1], f); });
   return '<div class="row"><select data-ch="freq">' + o + '</select><input data-ch="custom" type="number" inputmode="decimal" placeholder="MHz" style="width:90px"></div><div class="muted small">λ = ' + (299792.458 / f).toFixed(1) + ' mm · ' + f + ' MHz</div>';
 }
+function tabCard() {
+  return '<div class="card ac tbc" data-act="tablita"><div class="ah"><b>' + tr('Alineación en tablita y presupuesto de enlace', 'Board alignment and link budget') + '</b><span class="gn">' + tr('Sin conector', 'No connector') + '</span></div><div class="muted small">' + tr('Simulador de giro y posición, balance antena + cable + acople, plano con cotas e historial de puntos óptimos.', 'Rotation and position simulator, antenna + cable + coupling budget, dimensioned plan and best-point history.') + '</div></div>';
+}
 function list() {
-  var f = freqNow(), h = '<h2 class="first">' + tr('Taller de antenas', 'Antenna workshop') + '</h2><p class="muted small">' + tr('Todas las medidas se calculan para la frecuencia elegida. Las Yagi vienen de una simulación electromagnética propia (método de momentos); el resto, de fórmulas estándar. Valores teóricos: en la práctica cuenta 1–2 dB menos.', 'All dimensions are computed for the chosen frequency. The Yagis come from my own electromagnetic simulation (method of moments); the rest from standard formulas. Theoretical values: in practice expect 1–2 dB less.') + '</p>' + freqSelect();
+  var f = freqNow(), h = tabCard() + '<h2 class="first">' + tr('Taller de antenas', 'Antenna workshop') + '</h2><p class="muted small">' + tr('Todas las medidas se calculan para la frecuencia elegida. Las Yagi vienen de una simulación electromagnética propia (método de momentos); el resto, de fórmulas estándar. Valores teóricos: en la práctica cuenta 1–2 dB menos.', 'All dimensions are computed for the chosen frequency. The Yagis come from my own electromagnetic simulation (method of moments); the rest from standard formulas. Theoretical values: in practice expect 1–2 dB less.') + '</p>' + freqSelect();
   AL.ANT.forEach(function (a) {
     var b = a.build(f, { D: AS.D });
     h += '<div class="card ac" data-act="ant" data-id="' + a.id + '"><div class="ah"><b>' + T(a.n) + '</b><span class="gn">' + b.g.toFixed(1) + ' dBi</span></div><div class="muted small">' + T(a.use) + '</div><div class="muted small">' + (b.dir ? tr('Direccional · ', 'Directional · ') : tr('Omnidireccional · ', 'Omnidirectional · ')) + b.bw + '</div></div>';
@@ -71,7 +77,7 @@ var MORE = 'menu', sp = null;
 AL.views.more = { render: function () { $('#v-mas').innerHTML = moreHtml(); if (MORE === 'wifi') wifiLoad(); } };
 function moreHtml() {
   if (MORE === 'menu') return '<h2 class="first">' + tr('Más herramientas', 'More tools') + '</h2><div class="menu">' +
-    [['speed', '⚡', tr('Prueba de velocidad', 'Speed test')], ['wifi', '📶', tr('Analizador Wi‑Fi', 'Wi‑Fi analyzer')], ['gloss', '📖', tr('Glosario técnico', 'Technical glossary')], ['settings', '⚙️', tr('Ajustes', 'Settings')], ['about', 'ℹ️', tr('Acerca de y privacidad', 'About and privacy')]]
+    [['speed', '⚡', tr('Prueba de velocidad', 'Speed test')], ['wifi', '📶', tr('Analizador Wi‑Fi', 'Wi‑Fi analyzer')], ['gloss', '📖', tr('Glosario técnico', 'Technical glossary')], ['tablita', '📐', tr('Alineación en tablita (sin conector)', 'Board alignment (no connector)')], ['settings', '⚙️', tr('Ajustes', 'Settings')], ['about', 'ℹ️', tr('Acerca de y privacidad', 'About and privacy')]]
       .map(function (m) { return '<button data-act="more" data-k="' + m[0] + '"><span>' + m[1] + '</span>' + m[2] + '</button>'; }).join('') + '</div>';
   var back = '<button data-act="more" data-k="menu">← ' + tr('Volver', 'Back') + '</button>';
   if (MORE === 'gloss') return back + '<h2 class="first">' + tr('Glosario técnico', 'Technical glossary') + '</h2>' + AL.GLOSS.map(function (g) { return '<details><summary>' + g[0] + '</summary><p>' + T([g[1], g[2]]) + '</p></details>'; }).join('') +
@@ -145,7 +151,8 @@ var ACT = {
   tset: function () { AL.comp.set(); }, tnow: function () { AL.comp.now(); }, tbest: function () { AL.comp.best(); }, tclr: function () { AL.comp.clr(); },
   ant: function (e) { AS.sel = e.dataset.id; AL.views.ant.render(); $('main').scrollTop = 0; },
   antBack: function () { AS.sel = null; AL.views.ant.render(); },
-  more: function (e) { MORE = e.dataset.k; AL.views.more.render(); $('main').scrollTop = 0; },
+  tablita: function () { AS.sel = '__tab'; AL.views.ant.render(); $('main').scrollTop = 0; },
+  more: function (e) { if (e.dataset.k === 'tablita') { AS.sel = '__tab'; AL.showTab('antenas'); return; } MORE = e.dataset.k; AL.views.more.render(); $('main').scrollTop = 0; },
   speed: function () { speedRun(); },
   wifiscan: function () { if (A) { A.startWifiScan(); AL.toast(tr('Escaneando…', 'Scanning…')); setTimeout(wifiLoad, 3500); } },
   saveKey: function () { LS.set('al_ocid', $('#ocid').value.trim()); AL.toast(tr('Clave guardada', 'Key saved')); }

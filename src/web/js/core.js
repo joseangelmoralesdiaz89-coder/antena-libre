@@ -56,7 +56,7 @@ AL.card8 = function (deg) {
 
 // ---------- calidad ----------
 AL.CFG = {
-  version: '0.3.0', pollMs: 2000, pointEveryMs: 20000, minMoveM: 25, outageConfirm: 2, maxPoints: 5000, maxOutages: 500,
+  version: '0.3.1', pollMs: 2000, pointEveryMs: 20000, minMoveM: 25, outageConfirm: 2, maxPoints: 5000, maxOutages: 500,
   thresholds: { rsrp: [-80, -90, -100, -110], sinr: [20, 13, 0, -5], dbm: [-70, -85, -100, -110] }
 };
 AL.Q = [
@@ -155,7 +155,8 @@ AL.CABLES = [
   { id: 'RG-6 (75 Ω)', z: 75, vf: 0.82, od: 6.9, a900: 2.0, a2400: 3.6, note: ['TV por cable, barato y fácil de conseguir. 75 Ω: aceptable en recepción (SWR≈1.5).', 'Cable-TV coax, cheap and easy to find. 75 Ω: fine for receive (SWR≈1.5).'] },
   { id: 'RG-213', z: 50, vf: 0.66, od: 10.3, a900: 1.7, a2400: 2.9, note: ['Grueso, buena relación precio/pérdida para 5–10 m.', 'Thick, good price/loss for 5–10 m.'] },
   { id: 'LMR-400', z: 50, vf: 0.85, od: 10.3, a900: 1.28, a2400: 2.2, note: ['Estándar para antenas externas: poca pérdida hasta ~15 m.', 'The standard for external antennas: low loss up to ~15 m.'] },
-  { id: 'LMR-600', z: 50, vf: 0.87, od: 14.9, a900: 0.82, a2400: 1.45, note: ['Para tramos largos (15–30 m). Rígido y más caro.', 'For long runs (15–30 m). Stiff and pricier.'] }
+  { id: 'LMR-600', z: 50, vf: 0.87, od: 14.9, a900: 0.82, a2400: 1.45, note: ['Para tramos largos (15–30 m). Rígido y más caro.', 'For long runs (15–30 m). Stiff and pricier.'] },
+  { id: 'LMR-200', z: 50, vf: 0.83, od: 5.0, a900: 2.26, a2400: 3.97, note: ['Fino pero de baja pérdida para su tamaño: bueno hasta ~5 m.', 'Thin but low-loss for its size: good up to ~5 m.'] }
 ];
 AL.cableLoss = function (c, f, len) { var p = Math.log(c.a2400 / c.a900) / Math.log(2400 / 900); return c.a900 * Math.pow(f / 900, p) * len / 10; };
 AL.CONN_LOSS = 0.3; // dB por conector

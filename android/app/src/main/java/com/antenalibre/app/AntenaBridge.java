@@ -575,4 +575,25 @@ public class AntenaBridge implements SensorEventListener, LocationListener {
       }
     }).start();
   }
+
+  // Telemetría unificada para el módulo de tablita: señal + datos de la celda servidora
+  @JavascriptInterface
+  public String getTelemetryJson() {
+    try {
+      JSONObject o = new JSONObject(getSignal());
+      o.put("source", "native");
+      JSONArray cells = new JSONArray(getCells());
+      String[] keys = { "type", "earfcn", "nrarfcn", "bands", "pci", "ci", "nci", "mcc", "mnc", "tac", "ta", "bw" };
+      for (int i = 0; i < cells.length(); i++) {
+        JSONObject c = cells.getJSONObject(i);
+        if (c.optBoolean("reg", false)) {
+          for (String k : keys) { if (c.has(k)) o.put(k, c.get(k)); }
+          break;
+        }
+      }
+      return o.toString();
+    } catch (Exception e) {
+      return "{}";
+    }
+  }
 }

@@ -36,6 +36,7 @@ public class MainActivity extends AppCompatActivity {
     s.setAllowFileAccess(false);
     s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
     web.addJavascriptInterface(bridge, "Android");
+    web.addJavascriptInterface(bridge, "AntenaBridge");
 
     web.setWebViewClient(new WebViewClient() {
       @Override
