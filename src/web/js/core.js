@@ -56,7 +56,7 @@ AL.card8 = function (deg) {
 
 // ---------- calidad ----------
 AL.CFG = {
-  version: '0.3.1', pollMs: 2000, pointEveryMs: 20000, minMoveM: 25, outageConfirm: 2, maxPoints: 5000, maxOutages: 500,
+  version: '0.3.2', pollMs: 2000, pointEveryMs: 20000, minMoveM: 25, outageConfirm: 2, maxPoints: 5000, maxOutages: 500,
   thresholds: { rsrp: [-80, -90, -100, -110], sinr: [20, 13, 0, -5], dbm: [-70, -85, -100, -110] }
 };
 AL.Q = [

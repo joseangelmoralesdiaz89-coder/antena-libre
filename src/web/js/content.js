@@ -203,6 +203,7 @@ function yagi(id, f) {
     note: L('Con boom metálico que atraviese los elementos hay que alargarlos ≈ 2–3 %. Estas medidas son para boom aislante. Polarización: las torres usan polarización cruzada; vertical u horizontal funciona (≈ 3 dB de diferencia a veces).', 'With a metal boom passing through the elements, lengthen them ≈ 2–3 %. These dimensions are for an insulating boom. Polarisation: towers use cross-polarisation; vertical or horizontal both work (≈ 3 dB difference at times).')
   };
 }
+AL.YAGIS = YAGIS;
 AL.ANT = [
   { id: 'dipolo', n: ['Dipolo de media onda', 'Half-wave dipole'], use: ['Omnidireccional sencilla para empezar o repetidores cercanos.', 'Simple omnidirectional to start with, or nearby repeaters.'],
     build: function (f) {
@@ -242,8 +243,8 @@ AL.ANT = [
         svg: svgCorner(), note: L('Más voluminosa que una Yagi pero más fácil de afinar y con poco rechazo de ruido lateral.', 'Bulkier than a Yagi but easier to build and with good side rejection.') };
     } },
   { id: 'cantenna', n: ['Cantenna (guía de onda)', 'Cantenna (waveguide)'], use: ['Lata metálica con sonda: compacta, para 1.7 GHz o más (4G 1800/2100/2600, Wi‑Fi).', 'Metal can with a probe: compact, for 1.7 GHz and above (4G 1800/2100/2600, Wi‑Fi).'],
-    build: function (f) {
-      var l = lam(f), D = 0.70 * l, lc = 1.706 * D, lg = l / Math.sqrt(1 - (l / lc) * (l / lc)), Lc = 0.75 * lg;
+    build: function (f, o) {
+      var l = lam(f), D = (o && o.Dmm && o.Dmm > 0.586 * l && o.Dmm < 0.766 * l) ? o.Dmm : 0.70 * l, lc = 1.706 * D, lg = l / Math.sqrt(1 - (l / lc) * (l / lc)), Lc = 0.75 * lg;
       return { g: 8.5, dir: true, bw: L('≈ 60° en ambos planos', '≈ 60° in both planes'),
         head: [L('Medida', 'Dimension'), L('Valor', 'Value'), ''],
         rows: [[L('Diámetro interior D (0.70 λ)', 'Inner diameter D (0.70 λ)'), mm(D), ''], [L('Largo del tubo L (≥ 0.75 λg)', 'Tube length L (≥ 0.75 λg)'), mm(Lc), ''], [L('Sonda desde el fondo P (λg/4)', 'Probe from back wall P (λg/4)'), mm(lg / 4), ''], [L('Largo de la sonda (λ/4)', 'Probe length (λ/4)'), mm(l / 4), ''], [L('Ø de la sonda', 'Probe Ø'), '≈ ' + mm(Math.max(1.5, 0.012 * l)), '']],

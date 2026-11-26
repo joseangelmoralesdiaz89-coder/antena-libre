@@ -14,6 +14,7 @@ AL.views.ant = {
   render: function () {
     if (AS.sel === '__tab' && AL.tablita) { $('#v-antenas').innerHTML = AL.tablita.html(); AL.tablita.mount(); return; }
     var h = AS.sel ? detail() : list(); $('#v-antenas').innerHTML = h;
+    if (AL.taller) AL.taller.mount(AS.sel);
   },
   live: function () {}
 };
@@ -27,24 +28,26 @@ function tabCard() {
   return '<div class="card ac tbc" data-act="tablita"><div class="ah"><b>' + tr('Alineación en tablita y presupuesto de enlace', 'Board alignment and link budget') + '</b><span class="gn">' + tr('Sin conector', 'No connector') + '</span></div><div class="muted small">' + tr('Simulador de giro y posición, balance antena + cable + acople, plano con cotas e historial de puntos óptimos.', 'Rotation and position simulator, antenna + cable + coupling budget, dimensioned plan and best-point history.') + '</div></div>';
 }
 function list() {
-  var f = freqNow(), h = tabCard() + '<h2 class="first">' + tr('Taller de antenas', 'Antenna workshop') + '</h2><p class="muted small">' + tr('Todas las medidas se calculan para la frecuencia elegida. Las Yagi vienen de una simulación electromagnética propia (método de momentos); el resto, de fórmulas estándar. Valores teóricos: en la práctica cuenta 1–2 dB menos.', 'All dimensions are computed for the chosen frequency. The Yagis come from my own electromagnetic simulation (method of moments); the rest from standard formulas. Theoretical values: in practice expect 1–2 dB less.') + '</p>' + freqSelect();
+  var f = freqNow(), rec = AL.taller ? AL.taller.reco() : null, h = (AL.taller ? AL.taller.recoHtml() : '') + tabCard() + '<h2 class="first">' + tr('Taller de antenas', 'Antenna workshop') + '</h2><p class="muted small">' + tr('Todas las medidas se calculan para la frecuencia elegida. Las Yagi vienen de una simulación electromagnética propia (método de momentos); el resto, de fórmulas estándar. Valores teóricos: en la práctica cuenta 1–2 dB menos.', 'All dimensions are computed for the chosen frequency. The Yagis come from my own electromagnetic simulation (method of moments); the rest from standard formulas. Theoretical values: in practice expect 1–2 dB less.') + '</p>' + freqSelect();
   AL.ANT.forEach(function (a) {
-    var b = a.build(f, { D: AS.D });
-    h += '<div class="card ac" data-act="ant" data-id="' + a.id + '"><div class="ah"><b>' + T(a.n) + '</b><span class="gn">' + b.g.toFixed(1) + ' dBi</span></div><div class="muted small">' + T(a.use) + '</div><div class="muted small">' + (b.dir ? tr('Direccional · ', 'Directional · ') : tr('Omnidireccional · ', 'Omnidirectional · ')) + b.bw + '</div></div>';
+    var b = a.build(f, { D: AS.D, Dmm: AS.canD });
+    h += '<div class="card ac" data-act="ant" data-id="' + a.id + '"><div class="ah"><b>' + (rec && rec.id === a.id ? '⭐ ' : '') + T(a.n) + '</b><span class="gn">' + b.g.toFixed(1) + ' dBi</span></div><div class="muted small">' + T(a.use) + '</div><div class="muted small">' + (b.dir ? tr('Direccional · ', 'Directional · ') : tr('Omnidireccional · ', 'Omnidirectional · ')) + b.bw + '</div></div>';
   });
   h += '<p class="muted small">' + tr('Seguridad: no subas a techos con cables eléctricos cerca, usa arnés y pon la antena a tierra si el mástil es metálico (rayos).', 'Safety: stay away from power lines on roofs, use a harness and ground the mast if metal (lightning).') + '</p>';
   return h;
 }
 function detail() {
-  var a = AL.ANT.filter(function (x) { return x.id === AS.sel; })[0], f = freqNow(), b = a.build(f, { D: AS.D }), h = '';
+  var a = AL.ANT.filter(function (x) { return x.id === AS.sel; })[0], f = freqNow(), b = a.build(f, { D: AS.D, Dmm: AS.canD }), h = '';
   h += '<button data-act="antBack">← ' + tr('Volver', 'Back') + '</button><h2 class="first">' + T(a.n) + '</h2>' + freqSelect();
   if (a.id === 'dish') h += '<div class="row"><span class="muted small">D:</span><select data-ch="dish">' + [0.6, 0.9, 1.2, 1.5].map(function (d) { return opt(d, d + ' m', AS.D); }).join('') + '</select></div>';
-  h += '<div class="card">' + b.svg + '</div>';
+  if (a.id === 'cantenna') h += '<div class="row"><span class="muted small">' + tr('Mi bote mide (Ø interior, mm):', 'My can measures (inner Ø, mm):') + '</span><input data-ch="canD" type="number" inputmode="decimal" value="' + (AS.canD || '') + '" placeholder="' + Math.round(0.7 * 299792.458 / f) + '" style="width:90px"></div>';
+  h += AL.taller.photoHtml() + '<div class="card">' + b.svg + '</div>' + AL.taller.metaHtml(a.id, f);
   h += '<h3>' + tr('Rendimiento', 'Performance') + '</h3><div class="card rows"><div><span>' + tr('Ganancia', 'Gain') + '</span><b>' + b.g.toFixed(1) + ' dBi</b></div><div><span>' + tr('Haz', 'Beam') + '</span><b>' + b.bw + '</b></div></div>';
   h += '<h3>' + tr('Medidas exactas', 'Exact dimensions') + '</h3>' + tbl(b.head, b.rows);
   h += '<div class="card rows">' + b.facts.map(function (r) { return '<div><span>' + r[0] + '</span><b>' + r[1] + '</b></div>'; }).join('') + '</div>';
+  h += AL.taller.shopHtml(a.id, f, { D: AS.D, Dmm: AS.canD });
   h += '<h3>' + tr('Materiales', 'Materials') + '</h3><div class="card"><ul>' + b.mats.map(function (m) { return '<li><b>' + m[0] + ':</b> ' + m[1] + '</li>'; }).join('') + '</ul></div>';
-  h += '<h3>' + tr('Construcción', 'Build steps') + '</h3><div class="card"><ol>' + b.steps.map(function (s) { return '<li>' + s[0] + '</li>'; }).join('') + '</ol></div><p class="muted small">' + b.note + '</p>';
+  h += AL.taller.buildHtml(a.id, f, { D: AS.D, Dmm: AS.canD }) + '<p class="muted small">' + b.note + '</p>';
   // cable
   var c = AL.CABLES[AS.cable], loss = AL.cableLoss(c, f, AS.len) + 2 * AL.CONN_LOSS, net = b.g - loss;
   h += '<h3>' + tr('Cable: tipo y longitud', 'Cable: type and length') + '</h3><div class="row"><select data-ch="cable">' + AL.CABLES.map(function (x, i) { return opt(i, x.id + ' (' + x.z + ' Ω)', AS.cable); }).join('') + '</select><input data-ch="len" type="number" inputmode="decimal" value="' + AS.len + '" style="width:80px"> m</div>';
@@ -65,6 +68,7 @@ function antChange(k, v) {
   if (k === 'freq') AS.f = parseFloat(v);
   else if (k === 'custom') { var n = parseFloat(v); if (n >= 300 && n <= 7000) AS.f = n; else return; }
   else if (k === 'dish') AS.D = parseFloat(v);
+  else if (k === 'canD') { var cd = parseFloat(v); AS.canD = cd > 0 ? cd : null; }
   else if (k === 'cable') AS.cable = parseInt(v, 10);
   else if (k === 'len') { var l = parseFloat(v); if (!(l >= 0 && l <= 200)) return; AS.len = l; }
   else if (k === 'env') AS.env = v;
@@ -150,6 +154,7 @@ var ACT = {
   clear: function (e) { AL.clearHistory(e); },
   tset: function () { AL.comp.set(); }, tnow: function () { AL.comp.now(); }, tbest: function () { AL.comp.best(); }, tclr: function () { AL.comp.clr(); },
   ant: function (e) { AS.sel = e.dataset.id; AL.views.ant.render(); $('main').scrollTop = 0; },
+  phNext: function () { AL.taller.nextPhoto(); },
   antBack: function () { AS.sel = null; AL.views.ant.render(); },
   tablita: function () { AS.sel = '__tab'; AL.views.ant.render(); $('main').scrollTop = 0; },
   more: function (e) { if (e.dataset.k === 'tablita') { AS.sel = '__tab'; AL.showTab('antenas'); return; } MORE = e.dataset.k; AL.views.more.render(); $('main').scrollTop = 0; },
